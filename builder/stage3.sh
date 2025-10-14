@@ -1,58 +1,59 @@
 #!/bin/bash
 set -eux
 
+# ──────────────────────────────────────────────────────────────────────────────
+# 1️⃣ Vérifications initiales
+# ──────────────────────────────────────────────────────────────────────────────
+echo "===== Vérification du contenu avant compression ====="
 ls -lahF
+du -hd2 ComfyUI_Windows_portable || true
+du -hd1 ComfyUI_Windows_portable/ComfyUI/custom_nodes || true
+du -h ComfyUI_Windows_portable/ComfyUI/models || true
 
-du -hd2 ComfyUI_Windows_portable
-
-du -hd1 ComfyUI_Windows_portable/ComfyUI/custom_nodes
-
-du -h ComfyUI_Windows_portable/ComfyUI/models
-
-# Separate models and the rest
+# ──────────────────────────────────────────────────────────────────────────────
+# 2️⃣ Séparation des modèles (pour archive séparée)
+# ──────────────────────────────────────────────────────────────────────────────
+echo "===== Préparation du dossier modèles ====="
 mkdir -p m_folder/ComfyUI_Windows_portable/ComfyUI
-mv "ComfyUI_Windows_portable/ComfyUI/models"  "m_folder/ComfyUI_Windows_portable/ComfyUI/models"
-git -C "ComfyUI_Windows_portable/ComfyUI" checkout "models"
+mv "ComfyUI_Windows_portable/ComfyUI/models" "m_folder/ComfyUI_Windows_portable/ComfyUI/models"
 
-"C:\Program Files\7-Zip\7z.exe" a -t7z -m0=lzma2 -mx=7 -mfb=64 -md=128m -ms=on -mf=BCJ2 -v2140000000b ComfyUI_Windows_portable_cu129.7z ComfyUI_Windows_portable
+# Restaurer le dossier vide pour compatibilité Git
+git -C "ComfyUI_Windows_portable/ComfyUI" checkout "models" || true
 
-# In case you need faster compression, comment the line above, and uncomment the line below. 
-# "C:\Program Files\7-Zip\7z.exe" a -tzip -v2140000000b ComfyUI_Windows_portable_cu129.zip ComfyUI_Windows_portable
+# ──────────────────────────────────────────────────────────────────────────────
+# 3️⃣ Compression principale (ComfyUI sans models)
+# ──────────────────────────────────────────────────────────────────────────────
+echo "===== Compression de la build principale ====="
 
+# Mode par défaut : 7z avec LZMA2 (équilibre vitesse/ratio)
+# Si tu veux aller plus vite, ajuste -mx=5
+"C:\Program Files\7-Zip\7z.exe" a ^
+  -t7z -m0=lzma2 -mx=7 -mfb=64 -md=64m -ms=on -mf=BCJ2 ^
+  -v2140000000b ComfyUI_Windows_portable_cu126.7z ^
+  ComfyUI_Windows_portable
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 4️⃣ Compression secondaire (models)
+# ──────────────────────────────────────────────────────────────────────────────
+echo "===== Compression des modèles ====="
 cd m_folder
-"C:\Program Files\7-Zip\7z.exe" a -tzip -v2140000000b models.zip ComfyUI_Windows_portable
+"C:\Program Files\7-Zip\7z.exe" a ^
+  -tzip -mx=5 -v2140000000b models.zip ComfyUI_Windows_portable
 mv ./*.zip* ../
 cd ..
 
+# ──────────────────────────────────────────────────────────────────────────────
+# 5️⃣ Vérifications finales
+# ──────────────────────────────────────────────────────────────────────────────
+echo "===== Vérification des archives produites ====="
 ls -lahF
+du -h *.7z* || true
+du -h *.zip* || true
 
-################################################################################
-# Notes on 7zip compression:
-
-# Use 2140000000b as volume size because GitHub limits.
-
-# LZMA2 is ~75% faster than LZMA, but consumes significant more RAM.
-# The param "-mx=5 -mfb=32 -md=16m" is equivalent to "Normal Compression" in 7-Zip GUI.
-
-# Out of curiosity, I made a comparison:
-
-# "-mx=7 -mfb=64 -md=32m"
-# Add new data to archive: 9181 folders, 61097 files, 10816801395 bytes (11 GiB)
-# Archive size: 4610629660 bytes (4398 MiB)
-# Ratio: 0.426
-# Compression Time: 1050s
-
-# "-mx=5 -mfb=32 -md=16m"
-# Add new data to archive: 9238 folders, 61469 files, 10962874842 bytes (11 GiB)
-# Archive size: 4707714040 bytes (4490 MiB)
-# Ratio: 0.429
-# Compression Time: 840s
-
-# "-mx=3 -mfb=32 -md=4m"
-# Add new data to archive: 9238 folders, 61469 files, 10962875003 bytes (11 GiB)
-# Archive size: 5027350682 bytes (4795 MiB)
-# Ratio: 0.459
-# Compression Time: 565s
-
-# So I choose the "Normal Compression". Also, its decompression time is ideal.
-################################################################################
+echo
+echo "===================================================="
+echo "[✅] Stage 3 terminé avec succès."
+echo "Archives créées :"
+echo "  • ComfyUI_Windows_portable_cu126.7z.*  (application principale)"
+echo "  • models.zip.*                         (modèles séparés)"
+echo "===================================================="
