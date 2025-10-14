@@ -1,33 +1,25 @@
-accelerate
-diffusers
+accelerate==1.1.0
+diffusers==0.31.0
 ftfy
-huggingface-hub[hf-transfer]
+huggingface-hub[hf-transfer]==0.26.2
 imageio[ffmpeg]
 joblib
-kornia
+kornia==0.7.4
 matplotlib
 omegaconf
 onnx
-onnxruntime-gpu
-opencv-contrib-python-headless
+onnxruntime-gpu==1.19.2
+opencv-contrib-python-headless==4.10.0.84
 pandas
 pilgram
-pillow
+pillow>=10.4
 pygit2
 python-ffmpeg
 regex
-scikit-image
+scikit-image==0.24.0
 scikit-learn
 scipy
-timm
+timm==1.0.11
 torchmetrics
-transformers
-
-# Make sure opencv version is compatible with numpy1.
+transformers==4.45.2
 numpy==1.26.4
-# opencv-python-headless  # désactivé (en doublon avec opencv-contrib-python-headless)
-
-# Who needs numpy1: 
-# 1. Jovimetrix (and 'cozy-comfyui' and 'blendmodes')
-# 2. ComfyUI-SAM2
-# 3. ComfyUI-ReActor
