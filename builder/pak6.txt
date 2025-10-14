@@ -1,60 +1,32 @@
 # --- Nunchaku (compatible ComfyUI-nunchaku 1.0.x) ---
-https://github.com/nunchaku-tech/nunchaku/releases/download/v1.0.0/nunchaku-1.0.0+torch2.8-cp312-cp312-win_amd64.whl
+https://github.com/nunchaku-tech/nunchaku/releases/download/v1.0.0/nunchaku-1.0.0+torch2.5-cp311-cp311-win_amd64.whl
 
-# --- Dlib précompilé (Windows cp312) ---
-https://github.com/eddiehe99/dlib-whl/releases/download/v20.0.0-alpha/dlib-20.0.0-cp312-cp312-win_amd64.whl
+# --- Dlib précompilé (Windows cp311) ---
+https://github.com/eddiehe99/dlib-whl/releases/download/v20.0.0-alpha/dlib-20.0.0-cp311-cp311-win_amd64.whl
 
-# --- InsightFace (wheel Windows cp312) ---
-https://github.com/Gourieff/Assets/raw/refs/heads/main/Insightface/insightface-0.7.3-cp312-cp312-win_amd64.whl
+# --- InsightFace (wheel Windows cp311) ---
+https://github.com/Gourieff/Assets/raw/refs/heads/main/Insightface/insightface-0.7.3-cp311-cp311-win_amd64.whl
 
-# --- ONNX Runtime GPU uniquement (évite le CPU) ---
+# --- ONNX Runtime GPU ---
 onnxruntime-gpu==1.19.2
-
-# (Optionnel) pour remplacer l’avertissement pynvml
-nvidia-ml-py
 
 # --- Divers / nodes ---
 pixeloe
-scikit-build-core
-cupy-cuda12x          # Frame Interpolation
-compel                # smZNodes
-lark                  # smZNodes
-torchdiffeq           # DepthFM
-fairscale             # APISR (si build trop long -> commente)
-attrdict              # Janus
+cupy-cuda12x==13.0.0
+compel
+lark
+torchdiffeq
+attrdict
+fairscale==0.4.13
 
 # --- Cozy utils ---
 git+https://github.com/cozy-comfyui/cozy_comfyui.git#egg=cozy-comfyui
 
-# --- Dépendances Git ---
+# --- Git deps ---
 git+https://github.com/rodjjo/filterpy.git
 git+https://github.com/openai/CLIP.git
 git+https://github.com/ltdrdata/cstr.git
 git+https://github.com/ltdrdata/ffmpy.git
 git+https://github.com/ltdrdata/img2texture.git
-git+https://github.com/facebookresearch/sam2
-# Janus: ses deps réelles sont dans son pyproject
+git+https://github.com/facebookresearch/sam2.git
 git+https://github.com/deepseek-ai/Janus.git
-
-
-# # https://github.com/nunchaku-tech/nunchaku/releases/download/v0.3.2/nunchaku-0.3.2+torch2.8-cp312-cp312-win_amd64.whl
-# https://github.com/nunchaku-tech/nunchaku/releases/download/v1.0.0/nunchaku-1.0.0+torch2.8-cp312-cp312-win_amd64.whl
-# https://github.com/eddiehe99/dlib-whl/releases/download/v20.0.0-alpha/dlib-20.0.0-cp312-cp312-win_amd64.whl
-# https://github.com/Gourieff/Assets/raw/refs/heads/main/Insightface/insightface-0.7.3-cp312-cp312-win_amd64.whl
-# pixeloe
-# scikit-build-core
-# git+https://github.com/rodjjo/filterpy.git
-# git+https://github.com/openai/CLIP.git
-# git+https://github.com/ltdrdata/cstr.git
-# git+https://github.com/ltdrdata/ffmpy.git
-# git+https://github.com/ltdrdata/img2texture.git
-# git+https://github.com/facebookresearch/sam2
-# # Janus' real dep list is in its pyproject.toml, not requirements.txt
-# git+https://github.com/deepseek-ai/Janus.git
-# cupy-cuda12x # For Frame Interpolation
-# compel # For smZNodes
-# lark # For smZNodes
-# torchdiffeq # For DepthFM
-# fairscale # For APISR
-# attrdict # For Janus
-# # cozy-comfyui https://github.com/cozy-comfyui/cozy_comfyui
