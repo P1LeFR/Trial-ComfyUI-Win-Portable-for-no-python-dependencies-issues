@@ -4,7 +4,6 @@ set -eux
 workdir=$(pwd)
 pip_exe="${workdir}/python_standalone/python.exe -s -m pip"
 
-# Evite toute invite interactive de git/pip en CI
 export GIT_ASKPASS=echo
 export PIP_DEFAULT_TIMEOUT=120
 export PIP_NO_INPUT=1
@@ -13,35 +12,34 @@ export PIP_NO_WARN_SCRIPT_LOCATION=0
 
 ls -lahF
 
-# Python standalone
+# ⚙️ Python standalone 3.11 (plus compatible extensions)
 curl -sSL \
-  https://github.com/astral-sh/python-build-standalone/releases/download/20250814/cpython-3.12.11+20250814-x86_64-pc-windows-msvc-install_only.tar.gz \
+  https://github.com/astral-sh/python-build-standalone/releases/download/20250408/cpython-3.11.9+20250408-x86_64-pc-windows-msvc-install_only.tar.gz \
   -o python.tar.gz
 tar -zxf python.tar.gz
 mv python python_standalone
 
 # pip de base
-$pip_exe install --upgrade pip wheel setuptools --prefer-binary
+$pip_exe install --upgrade pip wheel setuptools packaging --prefer-binary
 
-# Installe tes paquets par blocs (pak2 → pak8)
-# --prefer-binary = limite les builds source (plus stable/rapide en CI)
-$pip_exe install -r "$workdir/pak2.txt" --prefer-binary
-$pip_exe install -r "$workdir/pak3.txt" --prefer-binary
+# pytorch officiel CUDA 12.6 compatible RTX 5090
+$pip_exe install torch==2.5.1+cu126 torchvision==0.20.1+cu126 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu126
+
+# xformers compatible (blackwell patch)
+$pip_exe install xformers==0.0.28.post3 --prefer-binary
+
+# reste des dépendances
 $pip_exe install -r "$workdir/pak4.txt" --prefer-binary
 $pip_exe install -r "$workdir/pak5.txt" --prefer-binary
 $pip_exe install -r "$workdir/pak6.txt" --prefer-binary
 $pip_exe install -r "$workdir/pak7.txt" --prefer-binary
 $pip_exe install -r "$workdir/pak8.txt" --prefer-binary
 
-# Tweak transparent-background (inchangé)
 $pip_exe install --upgrade albucore albumentations --prefer-binary
 
-# comfyui-frontend en fonction du tag ComfyUI
+# comfyui requirements (dernière version tag)
 latest_tag=$(curl -s https://api.github.com/repos/comfyanonymous/ComfyUI/tags | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
 $pip_exe install -r "https://github.com/comfyanonymous/ComfyUI/raw/refs/tags/${latest_tag}/requirements.txt" --prefer-binary
-
-$pip_exe install -r "$workdir/pakY.txt" --prefer-binary
-$pip_exe install -r "$workdir/pakZ.txt" --prefer-binary
 
 $pip_exe list
 
