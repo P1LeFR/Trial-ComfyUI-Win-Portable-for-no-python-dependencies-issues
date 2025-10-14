@@ -5,16 +5,53 @@ on:
 
 jobs:
   build:
+    name: "ComfyUI Test Build"
     runs-on: windows-latest
+    timeout-minutes: 60
+
+    permissions:
+      contents: read
+
     steps:
-        - uses: actions/checkout@v5
+      # ─────────────────────────────────────────────
+      # 1️⃣ Récupération du code source
+      # ─────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          submodules: false
 
-        - name: Stage 1 Gathering Dependencies
-          shell: bash
-          working-directory: builder
-          run: bash stage1.sh
+      # ─────────────────────────────────────────────
+      # 2️⃣ Étape 1 - Installation Python + Dépendances
+      # ─────────────────────────────────────────────
+      - name: Stage 1 - Gathering Dependencies
+        shell: bash
+        working-directory: builder
+        run: |
+          echo "==== 🧩 Stage 1 : Gathering Dependencies ===="
+          bash stage1.sh
+          echo "==== ✅ Stage 1 terminé ===="
 
-        - name: Stage 2 Assembling Repositories
-          shell: bash
-          working-directory: builder
-          run: bash stage2.sh
+      # ─────────────────────────────────────────────
+      # 3️⃣ Étape 2 - Assemblage de ComfyUI + Custom Nodes
+      # ─────────────────────────────────────────────
+      - name: Stage 2 - Assembling Repositories
+        shell: bash
+        working-directory: builder
+        run: |
+          echo "==== 🧱 Stage 2 : Assembling Repositories ===="
+          bash stage2.sh
+          echo "==== ✅ Stage 2 terminé ===="
+
+      # ─────────────────────────────────────────────
+      # 4️⃣ Vérification rapide du build
+      # ─────────────────────────────────────────────
+      - name: Quick check of Python environment
+        shell: bash
+        working-directory: builder
+        run: |
+          echo "==== 🔍 Vérification de l'environnement Python ===="
+          ./ComfyUI_Windows_portable/python_standalone/python.exe -V
+          ./ComfyUI_Windows_portable/python_standalone/python.exe -s -m pip list | head -n 20
+          echo "==== ✅ Vérification terminée ===="
