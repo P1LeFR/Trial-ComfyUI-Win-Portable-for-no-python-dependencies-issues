@@ -1,41 +1,77 @@
-name: "Build & Upload Package"
+name: "Build & Upload ComfyUI Portable (RTX5090)"
 
 on:
   workflow_dispatch:
 
 jobs:
   build_upload:
-    permissions:
-        contents: "write"
-        packages: "write"
-        pull-requests: "read"
+    name: "Build & Package ComfyUI"
     runs-on: windows-latest
+
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: read
+
+    timeout-minutes: 90
+
     steps:
-        - uses: actions/checkout@v5
+      # ─────────────────────────────────────────────
+      # 1️⃣ Clone du repo
+      # ─────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: false
+          fetch-depth: 1
 
-        - name: Stage 1 Gathering Dependencies
-          shell: bash
-          working-directory: builder
-          run: bash stage1.sh
+      # ─────────────────────────────────────────────
+      # 2️⃣ Étape 1 - Dépendances et Python
+      # ─────────────────────────────────────────────
+      - name: Stage 1 - Gathering Dependencies
+        shell: bash
+        working-directory: builder
+        run: |
+          echo "==== Stage 1: Install dependencies ===="
+          bash stage1.sh
 
-        - name: Stage 2 Assembling Repositories
-          shell: bash
-          working-directory: builder
-          run: bash stage2.sh
+      # ─────────────────────────────────────────────
+      # 3️⃣ Étape 2 - Assemblage
+      # ─────────────────────────────────────────────
+      - name: Stage 2 - Assembling Repositories
+        shell: bash
+        working-directory: builder
+        run: |
+          echo "==== Stage 2: Assemble ComfyUI ===="
+          bash stage2.sh
 
-        - name: Stage 3 Compressing Package
-          shell: bash
-          working-directory: builder
-          run: bash stage3.sh
+      # ─────────────────────────────────────────────
+      # 4️⃣ Étape 3 - Compression
+      # ─────────────────────────────────────────────
+      - name: Stage 3 - Compressing Package
+        shell: bash
+        working-directory: builder
+        run: |
+          echo "==== Stage 3: Compress portable package ===="
+          bash stage3.sh
 
-        - name: Upload archive to release
-          uses: xresloader/upload-to-github-release@v1
-          env:
-            # This is an always-on token in GitHub CI environment
-            # You don't need to configure it
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          with:
-            file: "builder/*.7z*;builder/*.zip*"
-            # Always draft before release
-            draft: true
-            overwrite: true
+      # ─────────────────────────────────────────────
+      # 5️⃣ Artefacts (optionnel mais pratique pour debug)
+      # ─────────────────────────────────────────────
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ComfyUI_Portable_Artifacts
+          path: builder/*.7z*
+
+      - name: Upload model artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ComfyUI_Model_Artifacts
+          path: builder/*.zip*
+
+      # ─────────────────────────────────────────────
+      # 6️⃣ Publication release GitHub
+      # ─────────────────────────────
