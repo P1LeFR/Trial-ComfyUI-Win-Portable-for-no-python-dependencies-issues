@@ -1,3 +1,2 @@
-# To avoid version chaos
---extra-index-url https://download.pytorch.org/whl/cu129
+--extra-index-url https://download.pytorch.org/whl/cu126
 git+https://github.com/plemeri/transparent-background.git
