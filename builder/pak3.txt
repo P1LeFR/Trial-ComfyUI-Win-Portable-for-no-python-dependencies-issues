@@ -1,7 +1,41 @@
---index-url https://download.pytorch.org/whl/cu129
+# pak3.txt — Torch stack uniquement (NE PAS ajouter xformers ici)
+# Objectif : rester modulable (patches autorisés) sans figer les versions.
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Canal CUDA actuellement stable pour ta stack de référence (Série 50) :
+# → cu128 (CUDA 12.8)
+--index-url https://download.pytorch.org/whl/cu128
 --extra-index-url https://pypi.org/simple
 
-torch==2.8.0+cu129
-torchvision==0.23.0+cu129
-torchaudio==2.8.0+cu129
-xformers==0.0.32.post2
+# Pins "compatibles" (acceptent les patch updates de la série)
+# → Torch 2.7.x, TV 0.22.x, TA 2.7.x
+torch~=2.7.0
+torchvision~=0.22.0
+torchaudio~=2.7.0
+
+# IMPORTANT :
+# - Ne pas mettre xformers ici. Installe-le après Torch, séparément,
+#   pour éviter que pip réinstalle/downgrade torch.
+# - Le canal cu128 garantit l'obtention des wheels CUDA adéquates.
+#   Les suffixes +cu128 dans les versions ne sont PAS nécessaires ici.
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ✅ Quand 2.8 + cu129 est stable, MODIFIER MANUELLEMENT ainsi :
+
+# 1) Bascule de canal CUDA :
+# --index-url https://download.pytorch.org/whl/cu129
+
+# 2) Bascule de séries (patches acceptés) :
+# torch~=2.8.0
+# torchvision~=0.23.0
+# torchaudio~=2.8.0
+
+# (Laisse --extra-index-url inchangé)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# (Optionnel) Si tu veux une build 100% reproductible à une date donnée,
+# tu peux, de façon ponctuelle, figer EXACTEMENT les versions (exemple) :
+# torch==2.7.0+cu128
+# torchvision==0.22.0+cu128
+# torchaudio==2.7.0+cu128
+# … puis revenir aux pins "compatibles" ci-dessus pour garder la souplesse.
