@@ -1,103 +1,246 @@
-#!/bin/bash
-set -eux
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-workdir=$(pwd)
-pip_exe="${workdir}/python_standalone/python.exe -s -m pip"
+# ╭──────────────────────────────────────────────────────────────────────────────╮
+# │ Stage 1 - Bootstrap portable ComfyUI (modulable, non figé)                  │
+# │ - Tout est paramétrable par variables d'environnement                        │
+# │ - Valeurs par défaut conservatrices, mais surclassables                       │
+# ╰──────────────────────────────────────────────────────────────────────────────╯
 
-# ──────────────────────────────────────────────────────────────
-# Environnement CI propre
-# ──────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────────
+# Paramètres (surclassables via env)
+# ────────────────────────────────────────────────────────────────────────────────
+: "${WORKDIR:="$(pwd)"}"
+PYDIR="${WORKDIR}/python_standalone"
+PYTHON_EXE="${PYDIR}/python.exe"
+
+# Python standalone:
+#  - Par défaut: URL stable mais surclassable par $PY_STANDALONE_URL
+#  - Optionnel: laisser vide et fournir $PY_STANDALONE_TAG (ex: 20250814) pour autogénération
+: "${PY_STANDALONE_URL:=""}"
+: "${PY_STANDALONE_TAG:=""}"  # si défini ET PY_STANDALONE_URL vide → construi l'URL
+: "${PY_STANDALONE_VERSION:="3.12.11"}" # utilisé si autogénération par TAG
+: "${PY_STANDALONE_ARCH:="x86_64-pc-windows-msvc"}"
+
+# Paquets & options pip
+: "${PIP_DEFAULT_TIMEOUT:=120}"
+: "${PIP_NO_INPUT:=1}"
+: "${PIP_NO_WARN_SCRIPT_LOCATION:=0}"
+: "${PIP_EXTRA_INDEX_URL:=""}"     # ex: https://download.pytorch.org/whl/cu128
+: "${PIP_CONSTRAINTS:=""}"         # chemin vers un constraints.txt optionnel
+: "${PIP_NO_CACHE_DIR:=1}"
+: "${PIP_ONLY_BINARY_DEFAULT:=":all:"}"  # binaire partout par défaut (surclassable)
+
+# Piles de requirements (toutes optionnelles, ignorées si absentes)
+: "${PAK_FILES:="pak2.txt pak3.txt pak4.txt pak5.txt pak6.txt pak7.txt pak8.txt"}"
+: "${PAK_POST_FILES:="pakY.txt pakZ.txt"}"
+
+# xFormers
+#  - XFORMERS_SPEC ""  → installer xformers (dernière wheel dispo)
+#  - XFORMERS_SPEC "0.0.32.post2" → pin précis
+#  - XFORMERS_SPEC "none" → sauter l'installation
+: "${XFORMERS_SPEC:=""}"
+: "${XFORMERS_NO_DEPS:=1}"   # 1 pour préserver torch installé avant
+: "${XFORMERS_ONLY_BINARY:=1}"
+
+# NumPy post-fix (facultatif)
+#  - Ex: NUMPY_SPEC="numpy>=2,<2.3" ; laisser vide pour ne pas imposer
+: "${NUMPY_SPEC:=""}"
+
+# ComfyUI: tag dynamique par défaut, trié côté API; fallback possible
+: "${COMFY_REPO:=comfyanonymous/ComfyUI}"
+: "${COMFY_TAG:=""}"   # si vide → cherche le dernier tag
+: "${COMFY_REQUIREMENTS_PATH:=requirements.txt}"
+
+# Outils externes (Ninja/aria2/FFmpeg)
+#  - "latest" pour Ninja (défaut), versions surclassables pour les autres
+: "${NINJA_VERSION:=latest}"            # "latest" ou tag explicite (ex: v1.12.1)
+: "${ARIA2_VERSION:=1.37.0}"
+: "${FFMPEG_VERSION:=7.1.1}"
+
+# Réseau / robustesse
+: "${CURL_RETRIES:=4}"
+: "${CURL_RETRY_DELAY:=2}"
+: "${VERIFY_ZIP_CONTENT:=1}"  # 1 → vérifie présence de binaire attendu après unzip
+
 export GIT_ASKPASS=echo
-export PIP_DEFAULT_TIMEOUT=120
-export PIP_NO_INPUT=1
-export PYTHONPYCACHEPREFIX="${workdir}/pycache1"
-export PIP_NO_WARN_SCRIPT_LOCATION=0
+export PIP_DEFAULT_TIMEOUT PIP_NO_INPUT PYTHONPYCACHEPREFIX="${WORKDIR}/pycache1" PIP_NO_WARN_SCRIPT_LOCATION PIP_NO_CACHE_DIR
 
+pip_exe() { "${PYTHON_EXE}" -s -m pip "$@"; }
+log() { printf '\n\033[1;34m[stage1]\033[0m %s\n' "$*"; }
+warn() { printf '\n\033[1;33m[warn]\033[0m %s\n' "$*"; }
+die() { printf '\n\033[1;31m[error]\033[0m %s\n' "$*"; exit 1; }
+
+curl_dl() {
+  # $1=url $2=output
+  curl -fSL --retry "${CURL_RETRIES}" --retry-delay "${CURL_RETRY_DELAY}" -o "$2" "$1"
+}
+
+file_exists_or_skip() {
+  local f="$1"
+  [[ -f "$f" ]] || { warn "fichier manquant, on saute: $f"; return 1; }
+  return 0
+}
+
+install_req_file() {
+  # installe un requirements si présent, avec index/constraints éventuellement
+  local req="$1"
+  file_exists_or_skip "$req" || return 0
+  local args=(install -r "$req" --prefer-binary)
+  [[ -n "${PIP_CONSTRAINTS}" && -f "${PIP_CONSTRAINTS}" ]] && args+=( -c "${PIP_CONSTRAINTS}" )
+  [[ -n "${PIP_EXTRA_INDEX_URL}" ]] && args+=( --extra-index-url "${PIP_EXTRA_INDEX_URL}" )
+  [[ -n "${PIP_ONLY_BINARY_DEFAULT}" ]] && args+=( --only-binary "${PIP_ONLY_BINARY_DEFAULT}" )
+  pip_exe "${args[@]}"
+}
+
+# ╭──────────────────────────────────────────────────────────────────────────────╮
+# │ 1) Bootstrap Python standalone                                              │
+# ╰──────────────────────────────────────────────────────────────────────────────╯
 ls -lahF
 
-# ──────────────────────────────────────────────────────────────
-# 1) Python standalone (3.12.x stable) + vérification archive
-# ──────────────────────────────────────────────────────────────
-echo "[Stage1] Téléchargement du Python standalone 3.12.x …"
-PY_URL="https://github.com/astral-sh/python-build-standalone/releases/download/20250814/cpython-3.12.11+20250814-x86_64-pc-windows-msvc-install_only.tar.gz"
+log "Téléchargement / préparation du Python standalone…"
+mkdir -p "${PYDIR}"
+tmp_py="${WORKDIR}/python.tar.gz"
 
-curl -fSL -o python.tar.gz "${PY_URL}"
-tar -tzf python.tar.gz >/dev/null   # valide l’archive
-tar -zxf python.tar.gz
-mv python python_standalone
+if [[ -z "${PY_STANDALONE_URL}" ]]; then
+  if [[ -n "${PY_STANDALONE_TAG}" ]]; then
+    PY_STANDALONE_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PY_STANDALONE_TAG}/cpython-${PY_STANDALONE_VERSION}+${PY_STANDALONE_TAG}-${PY_STANDALONE_ARCH}-install_only.tar.gz"
+    log "URL Python construite depuis TAG: ${PY_STANDALONE_URL}"
+  else
+    # Fallback: valeur stable connue (tu peux la surclasser côté CI)
+    PY_STANDALONE_URL="https://github.com/astral-sh/python-build-standalone/releases/download/20250814/cpython-3.12.11+20250814-${PY_STANDALONE_ARCH}-install_only.tar.gz"
+    warn "PY_STANDALONE_URL non fourni → fallback stable utilisé."
+  fi
+fi
 
-# ──────────────────────────────────────────────────────────────
-# 2) Mise à jour pip, wheel, setuptools
-# ──────────────────────────────────────────────────────────────
-$pip_exe install --upgrade pip wheel setuptools --prefer-binary
+curl_dl "${PY_STANDALONE_URL}" "${tmp_py}"
+tar -tzf "${tmp_py}" >/dev/null
+tar -zxf "${tmp_py}" -C "${WORKDIR}"
+rm -f "${tmp_py}"
+mv -f "${WORKDIR}/python" "${PYDIR}"
 
-# ──────────────────────────────────────────────────────────────
-# 3) Installation par blocs
-#    ⚠️ PAK3: torch/vision/audio d’abord, xformers ensuite (wheel only + no-deps)
-# ──────────────────────────────────────────────────────────────
-$pip_exe install -r "$workdir/pak2.txt" --prefer-binary
+# ╭──────────────────────────────────────────────────────────────────────────────╮
+# │ 2) Pip de base                                                              │
+# ╰──────────────────────────────────────────────────────────────────────────────╯
+log "Mise à jour pip/setuptools/wheel…"
+pip_exe install --upgrade pip wheel setuptools --prefer-binary
 
-# --- Bloc PAK3 : torch/vision/audio depuis ton pak3, sans xformers ---
-# on garde les index-url éventuels dans pak3
-tmp_pak3="${workdir}/pak3.no_xformers.txt"
-grep -viE '^[[:space:]]*xformers([[:space:]]|$)' "$workdir/pak3.txt" > "$tmp_pak3"
-$pip_exe install -r "$tmp_pak3" --prefer-binary
+# ╭──────────────────────────────────────────────────────────────────────────────╮
+# │ 3) Installation par blocs (torch d'abord, xformers ensuite, puis reste)     │
+# ╰──────────────────────────────────────────────────────────────────────────────╯
+# pak2 → prérequis généraux
+install_req_file "${WORKDIR}/pak2.txt"
 
-# --- Puis xformers wheel-only, sans deps (ne touche pas à torch) ---
-$pip_exe install --only-binary=:all: --no-deps xformers==0.0.32.post2
+# pak3 → torch/vision/audio (sans xformers)
+if file_exists_or_skip "${WORKDIR}/pak3.txt"; then
+  log "Installation pak3 (sans xformers)…"
+  # filtre xformers (insensible à la casse, ignore lignes commentées)
+  awk 'BEGIN{IGNORECASE=1} /^[[:space:]]*#/ {print; next} !/^[[:space:]]*xformers([[:space:]]|=|<|>|!|$)/ {print}' "${WORKDIR}/pak3.txt" > "${WORKDIR}/pak3.no_xformers.txt"
+  install_req_file "${WORKDIR}/pak3.no_xformers.txt"
+fi
 
-# Reste des paquets
-$pip_exe install -r "$workdir/pak4.txt" --prefer-binary
-$pip_exe install -r "$workdir/pak5.txt" --prefer-binary
-$pip_exe install -r "$workdir/pak6.txt" --prefer-binary
-$pip_exe install -r "$workdir/pak7.txt" --prefer-binary
-$pip_exe install -r "$workdir/pak8.txt" --prefer-binary
+# xformers (optionnel)
+if [[ "${XFORMERS_SPEC}" != "none" ]]; then
+  log "Installation xformers…"
+  XF_ARGS=(install --prefer-binary)
+  [[ -n "${PIP_EXTRA_INDEX_URL}" ]] && XF_ARGS+=( --extra-index-url "${PIP_EXTRA_INDEX_URL}" )
+  [[ -n "${PIP_CONSTRAINTS}" && -f "${PIP_CONSTRAINTS}" ]] && XF_ARGS+=( -c "${PIP_CONSTRAINTS}" )
+  [[ "${XFORMERS_ONLY_BINARY}" == "1" ]] && XF_ARGS+=( --only-binary ":all:" )
+  [[ "${XFORMERS_NO_DEPS}" == "1" ]] && XF_ARGS+=( --no-deps )
+  if [[ -n "${XFORMERS_SPEC}" ]]; then
+    XF_ARGS+=( "xformers==${XFORMERS_SPEC}" )
+  else
+    XF_ARGS+=( xformers )
+  fi
+  pip_exe "${XF_ARGS[@]}"
+else
+  warn "xformers ignoré (XFORMERS_SPEC=none)."
+fi
 
-# ──────────────────────────────────────────────────────────────
-# 4) Tweaks et requirements ComfyUI
-# ──────────────────────────────────────────────────────────────
-$pip_exe install --upgrade albucore albumentations --prefer-binary
+# pak4..pak8 → reste des dépendances
+for f in ${PAK_FILES}; do
+  [[ "${f}" == "pak3.txt" ]] && continue
+  install_req_file "${WORKDIR}/${f}" || true
+done
 
-latest_tag=$(curl -s https://api.github.com/repos/comfyanonymous/ComfyUI/tags \
-  | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
-$pip_exe install -r "https://github.com/comfyanonymous/ComfyUI/raw/refs/tags/${latest_tag}/requirements.txt" --prefer-binary
+# ╭──────────────────────────────────────────────────────────────────────────────╮
+# │ 4) ComfyUI requirements (tag dynamique par défaut) + post packs             │
+# ╰──────────────────────────────────────────────────────────────────────────────╯
+log "Installation requirements ComfyUI…"
+if [[ -z "${COMFY_TAG}" ]]; then
+  # Essaie via API, avec jq si dispo; sinon fallback sed
+  if command -v jq >/dev/null 2>&1; then
+    COMFY_TAG="$(curl -s "https://api.github.com/repos/${COMFY_REPO}/tags?per_page=50" | jq -r '.[].name' | head -n1)"
+  else
+    COMFY_TAG="$(curl -s "https://api.github.com/repos/${COMFY_REPO}/tags?per_page=50" | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+  fi
+  [[ -n "${COMFY_TAG}" ]] || die "Impossible de déterminer le tag ComfyUI."
+fi
+log "Tag ComfyUI sélectionné: ${COMFY_TAG}"
 
-$pip_exe install -r "$workdir/pakY.txt" --prefer-binary
-$pip_exe install -r "$workdir/pakZ.txt" --prefer-binary || true
+COMFY_REQ_URL="https://raw.githubusercontent.com/${COMFY_REPO}/refs/tags/${COMFY_TAG}/${COMFY_REQUIREMENTS_PATH}"
+pip_exe install -r "${COMFY_REQ_URL}" --prefer-binary
 
-# 🔧 Hotfix numpy : certains fichiers forcent numpy 1.26.x → on rétablit une version compatible OpenCV
-$pip_exe install "numpy>=2,<2.3" --prefer-binary
+# Packs post-ComfyUI
+for f in ${PAK_POST_FILES}; do
+  install_req_file "${WORKDIR}/${f}" || true
+done
 
-# Sanity check versions clés
-"$workdir/python_standalone/python.exe" - <<'PY'
-import sys
-def show(mod):
+# Hotfix NumPy (facultatif)
+if [[ -n "${NUMPY_SPEC}" ]]; then
+  log "Application du NUMPY_SPEC: ${NUMPY_SPEC}"
+  pip_exe install ${NUMPY_SPEC} --prefer-binary
+fi
+
+# Sanity check succinct
+log "Sanity check versions clés…"
+"${PYTHON_EXE}" - <<'PY'
+import importlib, sys
+mods = ("torch","torchvision","torchaudio","xformers","numpy")
+for m in mods:
     try:
-        m = __import__(mod)
-        print(f"{mod.upper():10s}", getattr(m, "__version__", "?"))
+        mod = importlib.import_module(m)
+        print(f"{m:10s} {getattr(mod,'__version__','?')}")
     except Exception as e:
-        print(f"{mod.upper():10s} IMPORT FAIL -> {e}", file=sys.stderr); sys.exit(1)
-for m in ("torch","torchvision","torchaudio","xformers","numpy"):
-    show(m)
+        print(f"{m:10s} IMPORT FAIL -> {e}", file=sys.stderr)
+        sys.exit(1)
 PY
 
-$pip_exe list
+pip_exe list
 
-# ──────────────────────────────────────────────────────────────
-# 5) Outils externes (ninja, aria2, ffmpeg)
-# ──────────────────────────────────────────────────────────────
-curl -sSL https://github.com/ninja-build/ninja/releases/latest/download/ninja-win.zip -o ninja-win.zip
-unzip -q -o ninja-win.zip -d "$workdir/python_standalone/Scripts"
-rm ninja-win.zip
+# ╭──────────────────────────────────────────────────────────────────────────────╮
+# │ 5) Outils externes: Ninja, aria2, FFmpeg                                     │
+# ╰──────────────────────────────────────────────────────────────────────────────╯
+BIN_SCRIPTS="${PYDIR}/Scripts"
+mkdir -p "${BIN_SCRIPTS}"
 
-curl -sSL https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip -o aria2.zip
-unzip -q aria2.zip -d "$workdir/aria2"
-mv "$workdir/aria2"/*/aria2c.exe "$workdir/python_standalone/Scripts/" || true
-rm aria2.zip
+# Ninja
+log "Récupération Ninja (${NINJA_VERSION})…"
+if [[ "${NINJA_VERSION}" == "latest" ]]; then
+  curl_dl "https://github.com/ninja-build/ninja/releases/latest/download/ninja-win.zip" "${WORKDIR}/ninja.zip"
+else
+  curl_dl "https://github.com/ninja-build/ninja/releases/download/${NINJA_VERSION}/ninja-win.zip" "${WORKDIR}/ninja.zip"
+fi
+unzip -q -o "${WORKDIR}/ninja.zip" -d "${BIN_SCRIPTS}"
+rm -f "${WORKDIR}/ninja.zip"
 
-curl -sSL https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-full_build.zip -o ffmpeg.zip
-unzip -q ffmpeg.zip -d "$workdir/ffmpeg"
-mv "$workdir/ffmpeg"/*/bin/ffmpeg.exe "$workdir/python_standalone/Scripts/" || true
-rm ffmpeg.zip
+# aria2
+log "Récupération aria2 (${ARIA2_VERSION})…"
+curl_dl "https://github.com/aria2/aria2/releases/download/release-${ARIA2_VERSION}/aria2-${ARIA2_VERSION}-win-64bit-build1.zip" "${WORKDIR}/aria2.zip"
+unzip -q -o "${WORKDIR}/aria2.zip" -d "${WORKDIR}/aria2"
+if [[ "${VERIFY_ZIP_CONTENT}" == "1" && ! -f "${WORKDIR}/aria2"/*/aria2c.exe ]]; then die "aria2c.exe introuvable dans l'archive."; fi
+mv "${WORKDIR}/aria2"/*/aria2c.exe "${BIN_SCRIPTS}/" 2>/dev/null || true
+rm -rf "${WORKDIR}/aria2" "${WORKDIR}/aria2.zip"
 
-du -hd1
+# FFmpeg
+log "Récupération FFmpeg (${FFMPEG_VERSION})…"
+curl_dl "https://github.com/GyanD/codexffmpeg/releases/download/${FFMPEG_VERSION}/ffmpeg-${FFMPEG_VERSION}-full_build.zip" "${WORKDIR}/ffmpeg.zip"
+unzip -q -o "${WORKDIR}/ffmpeg.zip" -d "${WORKDIR}/ffmpeg"
+if [[ "${VERIFY_ZIP_CONTENT}" == "1" && ! -f "${WORKDIR}/ffmpeg"/*/bin/ffmpeg.exe ]]; then die "ffmpeg.exe introuvable dans l'archive."; fi
+mv "${WORKDIR}/ffmpeg"/*/bin/ffmpeg.exe "${BIN_SCRIPTS}/" 2>/dev/null || true
+rm -rf "${WORKDIR}/ffmpeg" "${WORKDIR}/ffmpeg.zip"
+
+# Taille finale
+du -hd1 "${WORKDIR}" || true
+
+log "Stage1 terminé."
