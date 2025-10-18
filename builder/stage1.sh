@@ -46,7 +46,6 @@ PYTHON_EXE="${PYDIR}/python.exe"
 # Réseau
 : "${CURL_RETRIES:=4}"
 : "${CURL_RETRY_DELAY:=2}"
-: "${VERIFY_ZIP_CONTENT:=1}"
 
 export GIT_ASKPASS=echo
 export PIP_DEFAULT_TIMEOUT PIP_NO_INPUT PYTHONPYCACHEPREFIX="${WORKDIR}/pycache1" PIP_NO_WARN_SCRIPT_LOCATION PIP_NO_CACHE_DIR
@@ -87,7 +86,7 @@ gh_api() {
 ls -lahF
 
 # ────────────────────────────────────────────────────────────────────────────────
-# 1) Python standalone (corrigé : pas d’imbrication de dossiers)
+# 1) Python standalone (anti-imbrication)
 # ────────────────────────────────────────────────────────────────────────────────
 log "Téléchargement / préparation du Python standalone…"
 tmp_py="${WORKDIR}/python.tar.gz"
@@ -107,18 +106,15 @@ tar -tzf "${tmp_py}" >/dev/null
 tar -zxf "${tmp_py}" -C "${WORKDIR}"
 rm -f "${tmp_py}"
 
-# Trouve le dossier extrait contenant python.exe
 EXTRACTED_DIR=""
 if [[ -d "${WORKDIR}/python" && -f "${WORKDIR}/python/python.exe" ]]; then
   EXTRACTED_DIR="${WORKDIR}/python"
 else
-  # fallback: cherche un dossier qui contient python.exe
-  cand="$(find "${WORKDIR}" -maxdepth 2 -type f -name 'python.exe' -printf '%h\n' | head -n1 || true)"
-  [[ -n "$cand" ]] && EXTRACTED_DIR="$cand"
+  cand="$(find "${WORKDIR}" -maxdepth 2 -type f -name 'python.exe' -print -quit || true)"
+  [[ -n "$cand" ]] && EXTRACTED_DIR="$(dirname "$cand")"
 fi
 [[ -n "${EXTRACTED_DIR}" ]] || die "python.exe introuvable après extraction."
 
-# Évite l’imbrication : remplace totalement PYDIR par le dossier extrait
 rm -rf "${PYDIR}" 2>/dev/null || true
 mv -f "${EXTRACTED_DIR}" "${PYDIR}"
 
@@ -179,7 +175,7 @@ for f in ${PAK_POST_FILES}; do
   install_req_file "${WORKDIR}/${f}" || true
 done
 
-# (Pas de hotfix NumPy ici — pakZ/constraints décident)
+# (pas de hotfix NumPy ici — pakZ/constraints décident)
 
 # ────────────────────────────────────────────────────────────────────────────────
 # 5) Sanity check
@@ -200,11 +196,12 @@ PY
 pip_exe list
 
 # ────────────────────────────────────────────────────────────────────────────────
-# 6) Outils externes
+# 6) Outils externes (détection robuste des exe via find)
 # ────────────────────────────────────────────────────────────────────────────────
 BIN_SCRIPTS="${PYDIR}/Scripts"
 mkdir -p "${BIN_SCRIPTS}"
 
+# Ninja (ok)
 log "Récupération Ninja (${NINJA_VERSION})…"
 if [[ "${NINJA_VERSION}" == "latest" ]]; then
   curl_dl "https://github.com/ninja-build/ninja/releases/latest/download/ninja-win.zip" "${WORKDIR}/ninja.zip"
@@ -214,18 +211,28 @@ fi
 unzip -q -o "${WORKDIR}/ninja.zip" -d "${BIN_SCRIPTS}"
 rm -f "${WORKDIR}/ninja.zip"
 
+# aria2 (recherche agnostique de structure)
 log "Récupération aria2 (${ARIA2_VERSION})…"
 curl_dl "https://github.com/aria2/aria2/releases/download/release-${ARIA2_VERSION}/aria2-${ARIA2_VERSION}-win-64bit-build1.zip" "${WORKDIR}/aria2.zip"
 unzip -q -o "${WORKDIR}/aria2.zip" -d "${WORKDIR}/aria2"
-if [[ "${VERIFY_ZIP_CONTENT}" == "1" && ! -f "${WORKDIR}/aria2"/*/aria2c.exe ]]; then die "aria2c.exe introuvable dans l'archive."; fi
-mv "${WORKDIR}/aria2"/*/aria2c.exe "${BIN_SCRIPTS}/" 2>/dev/null || true
+aria2_exe="$(find "${WORKDIR}/aria2" -maxdepth 3 -type f -iname 'aria2c.exe' -print -quit || true)"
+if [[ -z "${aria2_exe}" ]]; then
+  warn "aria2c.exe introuvable dans l'archive → étape ignorée."
+else
+  mv -f "${aria2_exe}" "${BIN_SCRIPTS}/" || warn "Déplacement aria2c.exe échoué (non bloquant)."
+fi
 rm -rf "${WORKDIR}/aria2" "${WORKDIR}/aria2.zip"
 
+# FFmpeg (recherche agnostique de structure)
 log "Récupération FFmpeg (${FFMPEG_VERSION})…"
 curl_dl "https://github.com/GyanD/codexffmpeg/releases/download/${FFMPEG_VERSION}/ffmpeg-${FFMPEG_VERSION}-full_build.zip" "${WORKDIR}/ffmpeg.zip"
 unzip -q -o "${WORKDIR}/ffmpeg.zip" -d "${WORKDIR}/ffmpeg"
-if [[ "${VERIFY_ZIP_CONTENT}" == "1" && ! -f "${WORKDIR}/ffmpeg"/*/bin/ffmpeg.exe ]]; then die "ffmpeg.exe introuvable dans l'archive."; fi
-mv "${WORKDIR}/ffmpeg"/*/bin/ffmpeg.exe "${BIN_SCRIPTS}/" 2>/dev/null || true
+ffmpeg_exe="$(find "${WORKDIR}/ffmpeg" -maxdepth 4 -type f -iname 'ffmpeg.exe' -print -quit || true)"
+if [[ -z "${ffmpeg_exe}" ]]; then
+  warn "ffmpeg.exe introuvable dans l'archive → étape ignorée."
+else
+  mv -f "${ffmpeg_exe}" "${BIN_SCRIPTS}/" || warn "Déplacement ffmpeg.exe échoué (non bloquant)."
+fi
 rm -rf "${WORKDIR}/ffmpeg" "${WORKDIR}/ffmpeg.zip"
 
 du -hd1 "${WORKDIR}" || true
