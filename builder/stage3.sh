@@ -1,185 +1,79 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# ╭──────────────────────────────────────────────────────────────────────────────╮
-# │ Stage 3 — Packaging ComfyUI portable (modulaire, non figé)                  │
-# │ - Formats et niveaux de compression configurables                            │
-# │ - Séparation optionnelle des modèles                                         │
-# │ - Nommage d'archive paramétrable (auto-cu* si possible)                      │
-# │ - Découpes en volumes pour GitHub                                            │
-# │ - Hash SHA256 générés (si outil dispo)                                       │
-# ╰──────────────────────────────────────────────────────────────────────────────╯
+log()  { printf '\n\033[1;34m[stage3]\033[0m %s\n' "$*"; }
+warn() { printf '\n\033[1;33m[warn]\033[0m %s\n' "$*"; }
+die()  { printf '\n\033[1;31m[error]\033[0m %s\n' "$*"; exit 1; }
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Paramètres (surclassables via ENV)
-# ────────────────────────────────────────────────────────────────────────────────
-: "${WORKDIR:="$(pwd)"}"
-: "${PORTABLE_DIR:="${WORKDIR}/ComfyUI_Windows_portable"}"
-: "${COMFY_DIR:="${PORTABLE_DIR}/ComfyUI"}"
-: "${MODELS_DIR:="${COMFY_DIR}/models"}"
-: "${SEPARATE_MODELS:=1}"                     # 1: modèles dans une archive à part
-: "${OUT_DIR:="${WORKDIR}"}"                  # répertoire de sortie des archives
+WORKDIR="$(pwd)"
+PORTABLE_DIR="${WORKDIR}/ComfyUI_Windows_portable"
+PY="${PORTABLE_DIR}/python_standalone/python.exe"
 
-# 7-Zip — binaire
-: "${SEVENZ_EXE:="C:/Program Files/7-Zip/7z.exe"}"  # surclassable; fallback "7z" si non trouvé
-
-# Formats & options d’archive
-: "${MAIN_FORMAT:="7z"}"                      # 7z | zip
-: "${MODELS_FORMAT:="zip"}"                   # 7z | zip
-: "${VOL_SIZE:="2140000000b"}"                # taille des volumes
-: "${MAIN_MX:=7}"                             # niveau compression principal (3/5/7…)
-: "${MAIN_FB:=64}"                            # fast bytes
-: "${MAIN_DICT:="128m"}"                      # taille dictionnaire
-: "${MAIN_SOLID:=on}"                         # on/off
-: "${MAIN_BCJ2:=BCJ2}"                        # filtre
-: "${USE_LZMA2:=1}"                           # 1: LZMA2, 0: LZMA
-
-# Nom d’archive
-: "${PKG_BASENAME:=""}"                       # si vide: auto "ComfyUI_Windows_portable_${PKG_SUFFIX}"
-: "${PKG_SUFFIX:=""}"                         # si vide: tentative d’auto-détection cuXXX
-: "${ADD_TIMESTAMP:=0}"                       # 1: suffixe -YYYYmmddHHMMSS
-
-# Divers
-: "${LIST_BEFORE:=1}"                         # 1: afficher tailles avant packaging
-: "${LIST_AFTER:=1}"                          # 1: afficher tailles après packaging
-: "${KEEP_MODELS_DIR:=0}"                     # 1: ne pas restaurer/récréer models dans ComfyUI
-: "${GEN_HASH:=1}"                            # 1: générer .sha256 si possible
-
-# ────────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ────────────────────────────────────────────────────────────────────────────────
-log(){ printf '\n\033[1;34m[stage3]\033[0m %s\n' "$*"; }
-warn(){ printf '\033[1;33m[warn]\033[0m %s\n' "$*"; }
-die(){ printf '\033[1;31m[error]\033[0m %s\n' "$*"; exit 1; }
-
-have_cmd(){ command -v "$1" >/dev/null 2>&1; }
-
-detect_7z(){
-  # retourne un chemin exécutable vers 7z
-  local exe="${SEVENZ_EXE}"
-  if [[ -f "$exe" ]]; then printf '%s\n' "$exe"; return 0; fi
-  if have_cmd 7z; then printf '7z\n'; return 0; fi
-  die "7-Zip introuvable. Surclasse SEVENZ_EXE ou ajoute 7z au PATH."
-}
-
-hash_file(){
-  # produit .sha256 si possible
-  local f="$1"
-  [[ "${GEN_HASH}" != "1" ]] && return 0
-  if have_cmd sha256sum; then
-    sha256sum "$f" > "${f}.sha256" || warn "sha256sum a échoué pour $f"
-  elif have_cmd certutil; then
-    certutil -hashfile "$f" SHA256 | tr -d '\r' > "${f}.sha256" || warn "certutil a échoué pour $f"
+# 7-Zip (chemin Windows, fallback binaire '7z' dans le PATH)
+SEVENZIP="${SEVENZIP:-C:/Program Files/7-Zip/7z.exe}"
+if [[ ! -x "$SEVENZIP" ]]; then
+  if command -v 7z >/dev/null 2>&1; then
+    SEVENZIP="$(command -v 7z)"
   else
-    warn "Aucun outil de hash (sha256sum/certutil) — skip."
+    die "7-Zip introuvable (ni '$SEVENZIP' ni '7z' dans le PATH)"
   fi
-}
+fi
 
-detect_pkg_suffix(){
-  # Si PKG_SUFFIX vide, essaie torch.version.cuda via le Python portable
-  [[ -n "${PKG_SUFFIX}" ]] && { printf '%s\n' "${PKG_SUFFIX}"; return 0; }
-  local py="${PORTABLE_DIR}/python_standalone/python.exe"
-  if [[ -x "$py" ]]; then
-    local cu
-    cu="$("$py" - <<'PY' 2>/dev/null || true
-import torch, re
-v = getattr(torch.version, "cuda", "") or ""
-m = re.search(r"^(\d+)\.(\d+)", v)
-print(f"cu{m.group(1)}{m.group(2)}" if m else "")
+# Taille de volume (GitHub limite ~2.15GB)
+VOL_SIZE="${VOL_SIZE:-2140000000b}"
+LEVEL="${LEVEL:-7}"               # -mx (0..9)
+MAIN_FMT="${MAIN_FMT:-7z}"        # 7z par défaut pour meilleur ratio
+MODELS_FMT="${MODELS_FMT:-zip}"   # zip pour compat universelle
+
+log "Inventaire initial…"
+ls -lahF
+du -hd2 "${PORTABLE_DIR}" || true
+
+# Détection suffixe CUDA
+CUDA_TAG="$("$PY" - <<'PY'
+import torch, sys
+v = getattr(torch.version, "cuda", None) or ""
+print(f"cu{v.replace('.', '')}" if v else "cpu")
 PY
 )"
-    if [[ -n "$cu" ]]; then printf '%s\n' "$cu"; return 0; fi
-  fi
-  printf 'cu'  # fallback générique
-}
+[[ -n "$CUDA_TAG" ]] || CUDA_TAG="cuXX"
 
-archive_name(){
-  local suffix ts=""
-  suffix="$(detect_pkg_suffix)"
-  if [[ -z "${PKG_BASENAME}" ]]; then
-    PKG_BASENAME="ComfyUI_Windows_portable_${suffix}"
-  fi
-  if [[ "${ADD_TIMESTAMP}" == "1" ]]; then
-    ts="-$(date +%Y%m%d%H%M%S)"
-  fi
-  printf '%s%s' "${PKG_BASENAME}" "${ts}"
-}
+# Emplacements de sortie (fichiers définitifs)
+OUT_MAIN="${WORKDIR}/ComfyUI_Windows_portable_${CUDA_TAG}.${MAIN_FMT}"
+OUT_MODELS="${WORKDIR}/models.${MODELS_FMT}"
 
-pack_dir(){
-  # $1=dir $2=outbase $3=format (7z|zip) $4=volsize (ex: 2140000000b) $5=comment
-  local dir="$1" outbase="$2" fmt="$3" vs="$4" label="$5"
-  local zexe; zexe="$(detect_7z)"
-  local tflag="-t${fmt}"
-  local ofile="${OUT_DIR}/${outbase}.${fmt}"
-  local args=( a "${tflag}" )
-  if [[ "${fmt}" == "7z" ]]; then
-    local m0="lzma"
-    [[ "${USE_LZMA2}" == "1" ]] && m0="lzma2"
-    args+=( "-m0=${m0}" "-mx=${MAIN_MX}" "-mfb=${MAIN_FB}" "-md=${MAIN_DICT}" "-ms=${MAIN_SOLID}" "-mf=${MAIN_BCJ2}" )
-  fi
-  [[ -n "${vs}" ]] && args+=( "-v${vs}" )
-  args+=( "${ofile}" "${dir}" )
-  log "Compression ${label}: ${ofile} (format=${fmt}, vol=${vs:-none}, lvl=${MAIN_MX})"
-  "$zexe" "${args[@]}"
-  # hash pour chaque volume/part
-  for f in "${ofile}"*; do
-    [[ -f "$f" ]] && hash_file "$f"
-  done
-}
+# 1) Séparer les modèles
+log "Séparation des modèles…"
+MODELS_DIR="${PORTABLE_DIR}/ComfyUI/models"
+[[ -d "$MODELS_DIR" ]] || mkdir -p "$MODELS_DIR"
+mkdir -p "${WORKDIR}/m_folder/ComfyUI_Windows_portable/ComfyUI"
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Pré-listings (optionnels)
-# ────────────────────────────────────────────────────────────────────────────────
-ls -lahF
-if [[ "${LIST_BEFORE}" == "1" ]]; then
-  du -hd2 "${PORTABLE_DIR}" || true
-  du -hd1 "${COMFY_DIR}/custom_nodes" || true
-  du -h   "${MODELS_DIR}" || true
+if [[ -d "$MODELS_DIR" && "$(ls -A "$MODELS_DIR")" ]]; then
+  mv "${MODELS_DIR}" "${WORKDIR}/m_folder/ComfyUI_Windows_portable/ComfyUI/" || die "mv models -> m_folder échoué"
+  # Restaurer un dossier models vide côté repo (au cas où Git suit le répertoire)
+  git -C "${PORTABLE_DIR}/ComfyUI" checkout -- models || true
+  mkdir -p "${PORTABLE_DIR}/ComfyUI/models"
+else
+  warn "Pas de modèles à déplacer (dossier vide)."
 fi
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Séparation des modèles (optionnelle)
-# ────────────────────────────────────────────────────────────────────────────────
-TMP_ROOT="${WORKDIR}/m_folder"
-if [[ "${SEPARATE_MODELS}" == "1" ]]; then
-  log "Séparation des modèles…"
-  mkdir -p "${TMP_ROOT}/ComfyUI_Windows_portable/ComfyUI"
-  if [[ -d "${MODELS_DIR}" ]]; then
-    mv "${MODELS_DIR}" "${TMP_ROOT}/ComfyUI_Windows_portable/ComfyUI/models"
-  else
-    warn "Dossier models introuvable, rien à séparer."
-  fi
-  # Restaure un dossier models (vide) si souhaité
-  if [[ "${KEEP_MODELS_DIR}" != "1" ]]; then
-    mkdir -p "${MODELS_DIR}"
-  fi
-fi
+# 2) Compression du package principal (sans models)
+log "Compression principal: ${OUT_MAIN} (format=${MAIN_FMT}, vol=${VOL_SIZE}, lvl=${LEVEL})"
+"$SEVENZIP" a -t"${MAIN_FMT}" -mx="${LEVEL}" -m0=lzma2 -mfb=64 -md=128m -ms=on -mf=BCJ2 -v"${VOL_SIZE}" \
+  "${OUT_MAIN}" "ComfyUI_Windows_portable" >/dev/null
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Packaging
-# ────────────────────────────────────────────────────────────────────────────────
-BASENAME="$(archive_name)"
-
-# Archive principale (sans modèles si séparés)
-pack_dir "${PORTABLE_DIR}" "${BASENAME}" "${MAIN_FORMAT}" "${VOL_SIZE}" "principal"
-
-# Archive des modèles (si séparés)
-if [[ "${SEPARATE_MODELS}" == "1" ]]; then
-  pushd "${TMP_ROOT}" >/dev/null
-  pack_dir "ComfyUI_Windows_portable" "models" "${MODELS_FORMAT}" "${VOL_SIZE}" "modèles"
-  # renvoie les archives à OUT_DIR
-  for f in ./*."${MODELS_FORMAT}"*; do
-    mv "$f" "${OUT_DIR}/"
-  done
+# 3) Compression des modèles (dans m_folder)
+if [[ -d "${WORKDIR}/m_folder/ComfyUI_Windows_portable/ComfyUI/models" ]]; then
+  log "Compression modèles: ${OUT_MODELS} (format=${MODELS_FMT}, vol=${VOL_SIZE}, lvl=${LEVEL})"
+  pushd "${WORKDIR}/m_folder" >/dev/null
+  "$SEVENZIP" a -t"${MODELS_FMT}" -mx="${LEVEL}" -v"${VOL_SIZE}" \
+    "${OUT_MODELS}" "ComfyUI_Windows_portable" >/dev/null
   popd >/dev/null
+else
+  warn "Dossier modèles absent dans m_folder — aucune archive modèles créée."
 fi
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Post-listings (optionnels)
-# ────────────────────────────────────────────────────────────────────────────────
-ls -lahF "${OUT_DIR}"
-if [[ "${LIST_AFTER}" == "1" ]]; then
-  du -h "${OUT_DIR}"/* 2>/dev/null || true
-fi
-
-log "Packaging terminé."
+# 4) Listing & tailles
+log "Résultats:"
+ls -lahF "${WORKDIR}" | sed -n '1,200p'
+log "Terminé."
