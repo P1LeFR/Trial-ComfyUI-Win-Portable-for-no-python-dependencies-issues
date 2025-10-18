@@ -1,3 +1,28 @@
-# To avoid version chaos
---extra-index-url https://download.pytorch.org/whl/cu129
-git+https://github.com/plemeri/transparent-background.git
+# pak8.txt — extensions spécifiques (transparent-background + dépendances CUDA)
+# Objectif : garder la compatibilité Torch/CUDA sans figer ni dupliquer d’index.
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Index CUDA secondaire
+# Utilisé uniquement pour permettre à PyTorch et ses dépendances (torchvision, etc.)
+# de rester cohérents lorsque transparent-background importe torch ou torchvision.
+#
+# ⚠️ Adapte le canal en fonction de ton workflow :
+#    cu128 → Torch 2.7.x
+#    cu129 → Torch 2.8.x (lorsque stable)
+--extra-index-url https://download.pytorch.org/whl/cu128
+# --extra-index-url https://download.pytorch.org/whl/cu129   # ⇐ à activer quand tu passes en Torch 2.8+cu129
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Transparent Background (ComfyUI helper)
+# Ce dépôt tire des dépendances PyTorch (torch, torchvision, timm) :
+# - Ne pas les réinstaller via ce paquet (elles sont déjà gérées par pak3/pak4)
+# - En cas de conflit versionnel, utilise `--no-deps` ou un constraints.txt
+git+https://github.com/plemeri/transparent-background.git#egg=transparent-background
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Notes :
+# - Ne pas ajouter ici d’autres paquets PyTorch ou vision déjà gérés par pak3/pak4.
+# - Garde ce fichier minimal : il est exécuté en dernier pour éviter d’écraser des deps.
+# - Si transparent-background évolue (nouvelle branche ou ref), ajuste l’URL git
+#   sans figer de commit pour garder la modularité.
+# - Si tu changes de canal CUDA (ex. cu129), change simplement la ligne d’index ci-dessus.
