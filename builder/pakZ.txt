@@ -1,2 +1,18 @@
-# Ensure Numpy 1
-+ numpy>=2,<2.3   # e.g. 2.2.6 works with opencv 4.12.0.* and blendmodes 2025
+# pakZ.txt — compatibilité ReActor / nodes legacy (NumPy 1.x)
+# Objectif : garantir la compatibilité avec ReActor, Jovimetrix, SAM2, etc.
+# sans figer les versions exactes, mais en empêchant la migration vers NumPy 2.x.
+
+# ReActor et plusieurs custom nodes ne sont pas encore compatibles NumPy 2.
+# Cette contrainte maintient NumPy 1.x tout en autorisant les patchs récents.
+numpy<2
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Optionnel : en cas de conflit entre OpenCV et NumPy 1 (rare)
+# décommente la ligne suivante pour forcer une version < 4.12 :
+# opencv-contrib-python-headless<4.12
+#
+# Remarques :
+# - Pas de version exacte (= pas de ==) pour conserver la modularité.
+# - Cette contrainte peut être déplacée dans un constraints.txt du workflow
+#   si tu veux garder pakZ “neutre” et l’activer uniquement sur certains jobs.
+# - Les builds GPU et CPU ne sont pas affectés par cette contrainte NumPy.
