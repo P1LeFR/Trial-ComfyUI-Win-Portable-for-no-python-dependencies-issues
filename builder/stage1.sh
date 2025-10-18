@@ -28,8 +28,9 @@ PYTHON_EXE="${PYDIR}/python.exe"
 : "${PAK_FILES:="pak2.txt pak3.txt pak4.txt pak5.txt pak6.txt pak7.txt pak8.txt"}"
 : "${PAK_POST_FILES:="pakY.txt pakZ.txt"}"
 
-# xformers
-: "${XFORMERS_SPEC:=""}"           # "", "0.0.32.post2", "none"
+# xFormers
+# "", "0.0.32.post2", "none"
+: "${XFORMERS_SPEC:=""}"
 : "${XFORMERS_NO_DEPS:=1}"
 : "${XFORMERS_ONLY_BINARY:=1}"
 
@@ -129,6 +130,7 @@ pip_exe install --upgrade pip wheel setuptools --prefer-binary
 # ────────────────────────────────────────────────────────────────────────────────
 install_req_file "${WORKDIR}/pak2.txt"
 
+# pak3 (Torch/vision/audio) sans xformers
 if file_exists_or_skip "${WORKDIR}/pak3.txt"; then
   log "Installation pak3 (sans xformers)…"
   awk 'BEGIN{IGNORECASE=1} /^[[:space:]]*#/ {print; next} !/^[[:space:]]*xformers([[:space:]]|=|<|>|!|$)/ {print}' \
@@ -136,19 +138,48 @@ if file_exists_or_skip "${WORKDIR}/pak3.txt"; then
   install_req_file "${WORKDIR}/pak3.no_xformers.txt"
 fi
 
+# Vérif Torch et forçage canal CUDA pour xformers (fail-safe)
+TORCH_VER="$("${PYTHON_EXE}" - <<'PY'
+import torch, sys
+print(getattr(torch, "__version__", ""))
+PY
+)"
+case "$TORCH_VER" in
+  2.7.*+cu128) : ;;
+  *)
+    printf '\n[stage1][warn] Torch installé = %s ; workflow prévu pour 2.7.x+cu128.\n' "$TORCH_VER" 1>&2
+    printf '[stage1][warn] xFormers sera SKIPPÉ pour éviter un mismatch binaire.\n' 1>&2
+    export XFORMERS_SPEC="none"
+    ;;
+esac
+# Si aucun index CUDA n’est fourni, par défaut on pointe sur cu128 (pile 2.7.x)
+if [[ -z "${PIP_EXTRA_INDEX_URL:-}" ]]; then
+  export PIP_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cu128"
+fi
+
+# xformers (déterministe + fail-fast import)
 if [[ "${XFORMERS_SPEC}" != "none" ]]; then
-  log "Installation xformers…"
-  XF_ARGS=(install --prefer-binary)
+  log "Installation xformers==${XFORMERS_SPEC} (no-deps, binary-only)…"
+  XF_ARGS=(install --prefer-binary --only-binary ":all:" --no-deps "xformers==${XFORMERS_SPEC}")
   [[ -n "${PIP_EXTRA_INDEX_URL}" ]] && XF_ARGS+=( --extra-index-url "${PIP_EXTRA_INDEX_URL}" )
   [[ -n "${PIP_CONSTRAINTS}" && -f "${PIP_CONSTRAINTS}" ]] && XF_ARGS+=( -c "${PIP_CONSTRAINTS}" )
-  [[ "${XFORMERS_ONLY_BINARY}" == "1" ]] && XF_ARGS+=( --only-binary ":all:" )
-  [[ "${XFORMERS_NO_DEPS}" == "1" ]] && XF_ARGS+=( --no-deps )
-  if [[ -n "${XFORMERS_SPEC}" ]]; then XF_ARGS+=( "xformers==${XFORMERS_SPEC}" ); else XF_ARGS+=( xformers ); fi
   pip_exe "${XF_ARGS[@]}"
+
+  # test import immédiat
+  "${PYTHON_EXE}" - <<'PY'
+import sys
+try:
+    import torch, xformers
+    print("xformers:", xformers.__version__)
+except Exception as e:
+    print("[stage1][error] xformers import failed:", e, file=sys.stderr)
+    sys.exit(2)
+PY
 else
   warn "xformers ignoré (XFORMERS_SPEC=none)."
 fi
 
+# pak4..pak8 (reste)
 for f in ${PAK_FILES}; do
   [[ "${f}" == "pak3.txt" ]] && continue
   install_req_file "${WORKDIR}/${f}" || true
@@ -175,8 +206,6 @@ for f in ${PAK_POST_FILES}; do
   install_req_file "${WORKDIR}/${f}" || true
 done
 
-# (pas de hotfix NumPy ici — pakZ/constraints décident)
-
 # ────────────────────────────────────────────────────────────────────────────────
 # 5) Sanity check
 # ────────────────────────────────────────────────────────────────────────────────
@@ -201,7 +230,7 @@ pip_exe list
 BIN_SCRIPTS="${PYDIR}/Scripts"
 mkdir -p "${BIN_SCRIPTS}"
 
-# Ninja (ok)
+# Ninja
 log "Récupération Ninja (${NINJA_VERSION})…"
 if [[ "${NINJA_VERSION}" == "latest" ]]; then
   curl_dl "https://github.com/ninja-build/ninja/releases/latest/download/ninja-win.zip" "${WORKDIR}/ninja.zip"
@@ -211,27 +240,27 @@ fi
 unzip -q -o "${WORKDIR}/ninja.zip" -d "${BIN_SCRIPTS}"
 rm -f "${WORKDIR}/ninja.zip"
 
-# aria2 (recherche agnostique de structure)
+# aria2
 log "Récupération aria2 (${ARIA2_VERSION})…"
 curl_dl "https://github.com/aria2/aria2/releases/download/release-${ARIA2_VERSION}/aria2-${ARIA2_VERSION}-win-64bit-build1.zip" "${WORKDIR}/aria2.zip"
 unzip -q -o "${WORKDIR}/aria2.zip" -d "${WORKDIR}/aria2"
 aria2_exe="$(find "${WORKDIR}/aria2" -maxdepth 3 -type f -iname 'aria2c.exe' -print -quit || true)"
-if [[ -z "${aria2_exe}" ]]; then
-  warn "aria2c.exe introuvable dans l'archive → étape ignorée."
-else
+if [[ -n "${aria2_exe}" ]]; then
   mv -f "${aria2_exe}" "${BIN_SCRIPTS}/" || warn "Déplacement aria2c.exe échoué (non bloquant)."
+else
+  warn "aria2c.exe introuvable dans l'archive → étape ignorée."
 fi
 rm -rf "${WORKDIR}/aria2" "${WORKDIR}/aria2.zip"
 
-# FFmpeg (recherche agnostique de structure)
+# FFmpeg
 log "Récupération FFmpeg (${FFMPEG_VERSION})…"
 curl_dl "https://github.com/GyanD/codexffmpeg/releases/download/${FFMPEG_VERSION}/ffmpeg-${FFMPEG_VERSION}-full_build.zip" "${WORKDIR}/ffmpeg.zip"
 unzip -q -o "${WORKDIR}/ffmpeg.zip" -d "${WORKDIR}/ffmpeg"
 ffmpeg_exe="$(find "${WORKDIR}/ffmpeg" -maxdepth 4 -type f -iname 'ffmpeg.exe' -print -quit || true)"
-if [[ -z "${ffmpeg_exe}" ]]; then
-  warn "ffmpeg.exe introuvable dans l'archive → étape ignorée."
-else
+if [[ -n "${ffmpeg_exe}" ]]; then
   mv -f "${ffmpeg_exe}" "${BIN_SCRIPTS}/" || warn "Déplacement ffmpeg.exe échoué (non bloquant)."
+else
+  warn "ffmpeg.exe introuvable dans l'archive → étape ignorée."
 fi
 rm -rf "${WORKDIR}/ffmpeg" "${WORKDIR}/ffmpeg.zip"
 
