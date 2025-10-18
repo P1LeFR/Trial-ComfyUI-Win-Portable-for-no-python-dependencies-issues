@@ -1,33 +1,69 @@
+# pak4.txt — libs générales (SANS versions figées)
+# Politique : rester souple (pas de ==) ; gérer les cas spéciaux via commentaires/constraints.
+
+# HF / GenAI
 accelerate
 diffusers
-ftfy
+transformers
 huggingface-hub[hf-transfer]
-imageio[ffmpeg]
-joblib
-kornia
-matplotlib
-omegaconf
-onnx
-onnxruntime-gpu
-opencv-contrib-python-headless
-pandas
-pilgram
-pillow
-pygit2
-python-ffmpeg
+safetensors
+einops
+ftfy
 regex
+omegaconf
+timm
+torchmetrics
+kornia
+
+# Vision / média
+pillow
+imageio[ffmpeg]
+python-ffmpeg
+opencv-contrib-python-headless
+# opencv-python-headless        # ⇐ alternative si tu n’as pas besoin des modules "contrib"
+
+# ONNX (choisir CPU OU GPU, pas les deux)
+onnx
+# onnxruntime                    # ⇐ par défaut (CPU) : plus simple, pas de dépendance CUDA
+onnxruntime-gpu              # ⇐ décommente pour GPU, et COMmente "onnxruntime" au-dessus.
+#                               #    ⚠ Assure-toi que la version d’ORT-GPU publiée correspond
+#                               #    bien à ta toolchain CUDA (cu128/cu129) pour éviter les conflits.
+
+# Numérique / data
+pandas
 scikit-image
 scikit-learn
 scipy
-timm
-torchmetrics
-transformers
+matplotlib
+joblib
 
-# Make sure opencv version is compatible with numpy1.
-numpy==1.26.4
-# opencv-python-headless  # désactivé (en doublon avec opencv-contrib-python-headless)
+# Git / utilitaires
+pygit2
+pilgram
 
-# Who needs numpy1: 
-# 1. Jovimetrix (and 'cozy-comfyui' and 'blendmodes')
-# 2. ComfyUI-SAM2
-# 3. ComfyUI-ReActor
+# ------------------------------------------------------------------------------
+# ⚠️ NUMPY — PAR DÉFAUT, LAISSE PIP PRENDRE NumPy 2.x
+#    La majorité des libs est désormais compatible NumPy 2.
+#    Si certains custom nodes exigent encore NumPy 1 (Jovimetrix / SAM2 / ReActor),
+#    tu as DEUX options, selon ta politique de build :
+#
+# (A) Build “souple” (recommandé) : ne rien figer ici. Si un node force NumPy1,
+#     il installera sa contrainte au moment voulu. Tu gardes la modularité.
+#
+# (B) Build “legacy NumPy1” (ponctuelle / profil spécifique) :
+#     — soit tu crées un pak4_legacy_numpy1.txt séparé qui ajoute :
+#           numpy<2
+#     — soit tu injectes un constraints.txt côté workflow :
+#           numpy<2
+#     — soit, en DERNIER RECOURS, tu décommentes la ligne ci-dessous pour cette build :
+# numpy<2
+#
+# Évite de mélanger “numpy<2” avec des pins d’OpenCV ; garde OpenCV non figé pour
+# laisser les wheels s’aligner avec la version de NumPy choisie.
+# ------------------------------------------------------------------------------
+
+# Notes :
+# - Pas d’xformers ici : il est géré à part, après l’installation de torch (pak3).
+# - Pas de pins (= versions exactes) pour rester non figé ; si besoin d’une release
+#   100% reproductible, utilise un constraints.txt injecté par le workflow.
+# - Si tu actives onnxruntime-gpu, teste-le sur la combo Torch/CUDA ciblée.
