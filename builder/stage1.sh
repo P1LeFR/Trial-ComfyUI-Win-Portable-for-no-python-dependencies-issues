@@ -18,7 +18,7 @@ PYTHON_EXE="${PYDIR}/python.exe"
 #  - Par défaut: URL stable mais surclassable par $PY_STANDALONE_URL
 #  - Optionnel: laisser vide et fournir $PY_STANDALONE_TAG (ex: 20250814) pour autogénération
 : "${PY_STANDALONE_URL:=""}"
-: "${PY_STANDALONE_TAG:=""}"  # si défini ET PY_STANDALONE_URL vide → construi l'URL
+: "${PY_STANDALONE_TAG:=""}"  # si défini ET PY_STANDALONE_URL vide → construit l'URL
 : "${PY_STANDALONE_VERSION:="3.12.11"}" # utilisé si autogénération par TAG
 : "${PY_STANDALONE_ARCH:="x86_64-pc-windows-msvc"}"
 
@@ -42,10 +42,6 @@ PYTHON_EXE="${PYDIR}/python.exe"
 : "${XFORMERS_SPEC:=""}"
 : "${XFORMERS_NO_DEPS:=1}"   # 1 pour préserver torch installé avant
 : "${XFORMERS_ONLY_BINARY:=1}"
-
-# NumPy post-fix (facultatif)
-#  - Ex: NUMPY_SPEC="numpy>=2,<2.3" ; laisser vide pour ne pas imposer
-: "${NUMPY_SPEC:=""}"
 
 # ComfyUI: tag dynamique par défaut, trié côté API; fallback possible
 : "${COMFY_REPO:=comfyanonymous/ComfyUI}"
@@ -71,6 +67,7 @@ log() { printf '\n\033[1;34m[stage1]\033[0m %s\n' "$*"; }
 warn() { printf '\n\033[1;33m[warn]\033[0m %s\n' "$*"; }
 die() { printf '\n\033[1;31m[error]\033[0m %s\n' "$*"; exit 1; }
 
+# curl avec retries
 curl_dl() {
   # $1=url $2=output
   curl -fSL --retry "${CURL_RETRIES}" --retry-delay "${CURL_RETRY_DELAY}" -o "$2" "$1"
@@ -91,6 +88,17 @@ install_req_file() {
   [[ -n "${PIP_EXTRA_INDEX_URL}" ]] && args+=( --extra-index-url "${PIP_EXTRA_INDEX_URL}" )
   [[ -n "${PIP_ONLY_BINARY_DEFAULT}" ]] && args+=( --only-binary "${PIP_ONLY_BINARY_DEFAULT}" )
   pip_exe "${args[@]}"
+}
+
+# Helper GitHub API avec token si dispo (évite 403 / rate limit)
+gh_api() {
+  # $1 = URL API GitHub
+  local url="$1"
+  local hdr=(-H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    hdr+=( -H "Authorization: Bearer ${GITHUB_TOKEN}" )
+  fi
+  curl -fsSL --retry "${CURL_RETRIES}" --retry-delay "${CURL_RETRY_DELAY}" "${hdr[@]}" "$url"
 }
 
 # ╭──────────────────────────────────────────────────────────────────────────────╮
@@ -168,13 +176,14 @@ done
 # ╰──────────────────────────────────────────────────────────────────────────────╯
 log "Installation requirements ComfyUI…"
 if [[ -z "${COMFY_TAG}" ]]; then
-  # Essaie via API, avec jq si dispo; sinon fallback sed
+  # Essaie via API GitHub avec token si dispo; fallback jq/sed
+  # NB: l'API /tags n'est pas strictement triée; on prend le premier renvoyé (le plus récent côté GitHub).
   if command -v jq >/dev/null 2>&1; then
-    COMFY_TAG="$(curl -s "https://api.github.com/repos/${COMFY_REPO}/tags?per_page=50" | jq -r '.[].name' | head -n1)"
+    COMFY_TAG="$(gh_api "https://api.github.com/repos/${COMFY_REPO}/tags?per_page=50" | jq -r '.[].name' | head -n1 || true)"
   else
-    COMFY_TAG="$(curl -s "https://api.github.com/repos/${COMFY_REPO}/tags?per_page=50" | sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+    COMFY_TAG="$(gh_api "https://api.github.com/repos/${COMFY_REPO}/tags?per_page=50" | sed -n 's/.*\"name\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p' | head -n1 || true)"
   fi
-  [[ -n "${COMFY_TAG}" ]] || die "Impossible de déterminer le tag ComfyUI."
+  [[ -n "${COMFY_TAG}" ]] || die "Impossible de déterminer le tag ComfyUI (pense à exporter GITHUB_TOKEN)."
 fi
 log "Tag ComfyUI sélectionné: ${COMFY_TAG}"
 
@@ -186,11 +195,7 @@ for f in ${PAK_POST_FILES}; do
   install_req_file "${WORKDIR}/${f}" || true
 done
 
-# Hotfix NumPy (facultatif)
-if [[ -n "${NUMPY_SPEC}" ]]; then
-  log "Application du NUMPY_SPEC: ${NUMPY_SPEC}"
-  pip_exe install ${NUMPY_SPEC} --prefer-binary
-fi
+# (⚠️ Hotfix NumPy supprimé — laisse pakZ/constraints décider)
 
 # Sanity check succinct
 log "Sanity check versions clés…"
