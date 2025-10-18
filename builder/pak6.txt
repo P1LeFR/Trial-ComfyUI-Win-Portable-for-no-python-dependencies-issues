@@ -1,61 +1,49 @@
-# --- Nunchaku (compatible ComfyUI-nunchaku 1.0.x) ---
-https://github.com/nunchaku-tech/nunchaku/releases/download/v1.0.0/nunchaku-1.0.0+torch2.8-cp312-cp312-win_amd64.whl
+# pak6.txt — extras GPU / nodes (CUDA requis, ORT-GPU activé)
 
-# --- Dlib précompilé (Windows cp312) ---
-https://github.com/eddiehe99/dlib-whl/releases/download/v20.0.0-alpha/dlib-20.0.0-cp312-cp312-win_amd64.whl
+# ── ONNX Runtime GPU (CUDA) ───────────────────────────────────────────────────
+onnxruntime-gpu
+nvidia-ml-py            # supprime l’avertissement pynvml manquant
 
-# --- InsightFace (wheel Windows cp312) ---
-https://github.com/Gourieff/Assets/raw/refs/heads/main/Insightface/insightface-0.7.3-cp312-cp312-win_amd64.whl
+# ── CUDA utils ────────────────────────────────────────────────────────────────
+cupy-cuda12x            # CUDA 12.x (cu128/cu129)
 
-# --- ONNX Runtime GPU uniquement (évite le CPU) ---
-onnxruntime-gpu==1.19.2
-
-# (Optionnel) pour remplacer l’avertissement pynvml
-nvidia-ml-py
-
-# --- Divers / nodes ---
+# ── Dépendances “node-driven” (générales) ─────────────────────────────────────
 pixeloe
 scikit-build-core
-cupy-cuda12x          # Frame Interpolation
-compel                # smZNodes
-lark                  # smZNodes
-torchdiffeq           # DepthFM
-fairscale             # APISR (si build trop long -> commente)
-attrdict              # Janus
+compel
+lark
+torchdiffeq
+fairscale
+attrdict
 
-# --- Cozy utils ---
+# ── Vision/face ───────────────────────────────────────────────────────────────
+insightface             # privilégier PyPI (GPU activé si dispo)
+# dlib-bin              # Windows wheels via PyPI (fallback)
+# dlib                  # autres plateformes (peut nécessiter build)
+
+# ✳ Si une wheel précise est indispensable pour ta combo (Windows cp312/torch):
+# https://github.com/eddiehe99/dlib-whl/releases/download/v20.0.0-alpha/dlib-20.0.0-cp312-cp312-win_amd64.whl
+# https://github.com/Gourieff/Assets/raw/refs/heads/main/Insightface/insightface-0.7.3-cp312-cp312-win_amd64.whl
+
+# ── Nunchaku (couplé à Torch/Python) ──────────────────────────────────────────
+# Décommente SEULEMENT la wheel qui correspond exactement à ta série Torch & cp
+# https://github.com/nunchaku-tech/nunchaku/releases/download/v1.0.0/nunchaku-1.0.0+torch2.8-cp312-cp312-win_amd64.whl
+# (si tu es en Torch 2.7, prends la wheel correspondante; sinon garde PyPI vide)
+
+# ── Cozy utils ────────────────────────────────────────────────────────────────
 git+https://github.com/cozy-comfyui/cozy_comfyui.git#egg=cozy-comfyui
 
-# --- Dépendances Git ---
+# ── Dépendances Git (sources officielles) ─────────────────────────────────────
 git+https://github.com/rodjjo/filterpy.git
 git+https://github.com/openai/CLIP.git
 git+https://github.com/ltdrdata/cstr.git
 git+https://github.com/ltdrdata/ffmpy.git
 git+https://github.com/ltdrdata/img2texture.git
 git+https://github.com/facebookresearch/sam2
-# Janus: ses deps réelles sont dans son pyproject
+# Janus (deps dans son pyproject)
 git+https://github.com/deepseek-ai/Janus.git
 
-
-# # https://github.com/nunchaku-tech/nunchaku/releases/download/v0.3.2/nunchaku-0.3.2+torch2.8-cp312-cp312-win_amd64.whl
-# https://github.com/nunchaku-tech/nunchaku/releases/download/v1.0.0/nunchaku-1.0.0+torch2.8-cp312-cp312-win_amd64.whl
-# https://github.com/eddiehe99/dlib-whl/releases/download/v20.0.0-alpha/dlib-20.0.0-cp312-cp312-win_amd64.whl
-# https://github.com/Gourieff/Assets/raw/refs/heads/main/Insightface/insightface-0.7.3-cp312-cp312-win_amd64.whl
-# pixeloe
-# scikit-build-core
-# git+https://github.com/rodjjo/filterpy.git
-# git+https://github.com/openai/CLIP.git
-# git+https://github.com/ltdrdata/cstr.git
-# git+https://github.com/ltdrdata/ffmpy.git
-# git+https://github.com/ltdrdata/img2texture.git
-# git+https://github.com/facebookresearch/sam2
-# # Janus' real dep list is in its pyproject.toml, not requirements.txt
-# git+https://github.com/deepseek-ai/Janus.git
-# cupy-cuda12x # For Frame Interpolation
-# compel # For smZNodes
-# lark # For smZNodes
-# torchdiffeq # For DepthFM
-# fairscale # For APISR
-# attrdict # For Janus
-# # cozy-comfyui https://github.com/cozy-comfyui/cozy_comfyui
-# git+https://github.com/cozy-comfyui/cozy_comfyui.git#egg=cozy-comfy
+# Notes:
+# - Ne mélange pas onnxruntime (CPU) et onnxruntime-gpu dans tes paquets.
+# - cupy-cuda12x couvre CUDA 12.x (cu128/cu129). Ajuste si tu changes de canal CUDA.
+# - Les wheels Nunchaku/Dlib/InsightFace fixes sont à activer seulement si nécessaire.
