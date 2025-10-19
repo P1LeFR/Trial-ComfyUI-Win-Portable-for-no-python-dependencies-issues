@@ -41,6 +41,23 @@ $pip_exe install -r "$workdir"/pakZ.txt
 
 $pip_exe list
 
+# # --- Forcer les versions compatibles RTX série 50 (Torch 2.7.0 + CUDA 12.8) ---
+# constraint_args="--constraint <(cat <<'EOF'
+# torch==2.7.0+cu128
+# torchvision==0.22.0+cu128
+# torchaudio==2.7.0+cu128
+# xformers==0.0.30
+# onnxruntime-gpu==1.22.0
+# cupy-cuda12x==13.5.1
+# EOF
+# )"
+heu
+# # Installer ComfyUI avec contraintes sans créer de fichier temporaire
+# latest_tag=$(curl -s https://api.github.com/repos/comfyanonymous/ComfyUI/tags | jq -r '.[0].name')
+# $pip_exe install -r "https://github.com/comfyanonymous/ComfyUI/raw/refs/tags/${latest_tag}/requirements.txt" \
+#   $(eval echo "$constraint_args")
+
+
 cd "$workdir"
 
 # Add Ninja binary (replacing PIP Ninja if exists)
