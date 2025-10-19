@@ -188,6 +188,13 @@ curl -sSL https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/i
 # curl -sSL https://huggingface.co/AdamCodd/vit-base-nsfw-detector/resolve/main/preprocessor_config.json \
 #     --create-dirs -o nsfw_detector/vit-base-nsfw-detector/preprocessor_config.json
 
+# ---------------------------------------------------------------------------
+# Download model for AnimateDiff
+# ---------------------------------------------------------------------------
+echo "[+] Downloading AnimateDiff motion model..."
+curl -sSL https://huggingface.co/guoyww/animatediff/resolve/main/mm_sd_v15_v2.ckpt \
+    --create-dirs -o "$short_root/ComfyUI_Windows_portable/ComfyUI/models/animatediff_models/mm_sd_v15_v2.ckpt"
+
 # Download models for Impact-Pack & Impact-Subpack
 cd "$short_root/ComfyUI_Windows_portable/ComfyUI/custom_nodes/ComfyUI-Impact-Pack"
 "$short_root/ComfyUI_Windows_portable/python_standalone/python.exe" -s -B install.py
