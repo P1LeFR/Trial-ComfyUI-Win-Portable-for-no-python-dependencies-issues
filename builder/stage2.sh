@@ -194,6 +194,17 @@ cd "$short_root/ComfyUI_Windows_portable/ComfyUI/custom_nodes/ComfyUI-Impact-Pac
 cd "$short_root/ComfyUI_Windows_portable/ComfyUI/custom_nodes/ComfyUI-Impact-Subpack"
 "$short_root/ComfyUI_Windows_portable/python_standalone/python.exe" -s -B install.py
 
+echo "[Patch] Creating alias package cozy_comfy → cozy_comfyui"
+alias_dir="$short_root/ComfyUI_Windows_portable/python_standalone/Lib/site-packages/cozy_comfy"
+mkdir -p "$alias_dir"
+cat > "$alias_dir/__init__.py" << 'PY'
+import importlib, sys
+m = importlib.import_module("cozy_comfyui")
+sys.modules.setdefault("cozy_comfyui", m)
+sys.modules.setdefault("cozy_comfy", m)
+globals().update(getattr(m, "__dict__", {}))
+PY
+
 ################################################################################
 # Run the test (CPU only), also let custom nodes download some models
 cd "$short_root/ComfyUI_Windows_portable"
