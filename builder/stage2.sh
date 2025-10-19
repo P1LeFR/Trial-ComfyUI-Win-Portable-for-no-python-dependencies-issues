@@ -1,74 +1,48 @@
 #!/bin/bash
 set -eux
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 1️⃣ Préparation
-# ──────────────────────────────────────────────────────────────────────────────
-git config --global core.autocrlf true && git config --global core.longpaths true
+# Chores
+git config --global core.autocrlf true
 workdir=$(pwd)
-gcs='git -c core.longpaths=true clone --depth=1 --no-tags --recurse-submodules --shallow-submodules'
-
+gcs='git clone --depth=1 --no-tags --recurse-submodules --shallow-submodules'
 export PYTHONPYCACHEPREFIX="$workdir/pycache2"
 export PATH="$PATH:$workdir/ComfyUI_Windows_portable/python_standalone/Scripts"
-export GIT_ASKPASS=echo  # évite les invites d'identification GitHub
 
 ls -lahF
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 2️⃣ Prépare les dossiers de cache
-# ──────────────────────────────────────────────────────────────────────────────
+# Redirect HuggingFace-Hub model folder
 export HF_HUB_CACHE="$workdir/ComfyUI_Windows_portable/HuggingFaceHub"
+mkdir -p "${HF_HUB_CACHE}"
+# Redirect Pytorch Hub model folder
 export TORCH_HOME="$workdir/ComfyUI_Windows_portable/TorchHome"
-mkdir -p "${HF_HUB_CACHE}" "${TORCH_HOME}"
+mkdir -p "${TORCH_HOME}"
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 3️⃣ Déplace le Python standalone dans le package final
-# ──────────────────────────────────────────────────────────────────────────────
-mv "$workdir/python_standalone" "$workdir/ComfyUI_Windows_portable/python_standalone"
+# Relocate python_standalone
+# This move is intentional. It will fast-fail if this breaks anything.
+mv  "$workdir"/python_standalone  "$workdir"/ComfyUI_Windows_portable/python_standalone
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 4️⃣ Ajoute MinGit portable
-# ──────────────────────────────────────────────────────────────────────────────
-curl -sSL https://github.com/git-for-windows/git/releases/download/v2.50.1.windows.1/MinGit-2.50.1-64-bit.zip -o MinGit.zip
-unzip -q MinGit.zip -d "$workdir/ComfyUI_Windows_portable/MinGit"
+# Add MinGit (Portable Git)
+curl -sSL https://github.com/git-for-windows/git/releases/download/v2.50.1.windows.1/MinGit-2.50.1-64-bit.zip \
+    -o MinGit.zip
+unzip -q MinGit.zip -d "$workdir"/ComfyUI_Windows_portable/MinGit
 rm MinGit.zip
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 5️⃣ Clone du cœur ComfyUI
-# ──────────────────────────────────────────────────────────────────────────────
-git clone https://github.com/comfyanonymous/ComfyUI.git "$workdir/ComfyUI_Windows_portable/ComfyUI"
-cd "$workdir/ComfyUI_Windows_portable/ComfyUI"
-git fetch --tags --force
-latest_app_tag=$(git tag -l 'v*' | sort -V | tail -1)
-git reset --hard "$latest_app_tag"
-
-# Vide le dossier models (restauré plus tard)
+################################################################################
+# ComfyUI main app
+git clone https://github.com/comfyanonymous/ComfyUI.git \
+    "$workdir"/ComfyUI_Windows_portable/ComfyUI
+# Use latest stable version (has a release tag)
+cd "$workdir"/ComfyUI_Windows_portable/ComfyUI
+git reset --hard "$(git tag | grep -e '^v' | sort -V | tail -1)"
+# Clear models folder (will restore in the next stage)
 rm -vrf models
 mkdir models
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 6️⃣ Copie courte pour corriger les problèmes de chemins longs
-# ──────────────────────────────────────────────────────────────────────────────
-run_tmp="${RUNNER_TEMP:-/d/a}"
-
-if command -v cygpath >/dev/null 2>&1; then
-  short_root="$(cygpath -u "$run_tmp")/cwp_phys"
-else
-  short_root="$run_tmp/cwp_phys"
-fi
-
-mkdir -p "$short_root"
-rm -rf "$short_root/ComfyUI_Windows_portable" || true
-cp -r "$workdir/ComfyUI_Windows_portable" "$short_root/"
-port_root="$short_root/ComfyUI_Windows_portable"
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 7️⃣ Custom Nodes
-# ──────────────────────────────────────────────────────────────────────────────
-cd "$port_root/ComfyUI/custom_nodes"
+# Custom Nodes
+cd "$workdir"/ComfyUI_Windows_portable/ComfyUI/custom_nodes
+$gcs https://github.com/Comfy-Org/ComfyUI-Manager.git
 
 # Workspace
-$gcs https://github.com/Comfy-Org/ComfyUI-Manager.git
 $gcs https://github.com/crystian/ComfyUI-Crystools.git
 $gcs https://github.com/pydn/ComfyUI-to-Python-Extension.git
 
@@ -90,7 +64,7 @@ $gcs https://github.com/yolain/ComfyUI-Easy-Use.git
 $gcs https://github.com/chflame163/ComfyUI_LayerStyle.git
 $gcs https://github.com/Fannovel16/comfyui_controlnet_aux.git
 $gcs https://github.com/florestefano1975/comfyui-portrait-master.git
-$gcs https://codeberg.org/Gourieff/comfyui-reactor-node.git
+$gcs https://github.com/Gourieff/ComfyUI-ReActor.git
 $gcs https://github.com/huchenlei/ComfyUI-IC-Light-Native.git
 $gcs https://github.com/huchenlei/ComfyUI-layerdiffuse.git
 $gcs https://github.com/Jonseed/ComfyUI-Detail-Daemon.git
@@ -118,11 +92,8 @@ $gcs https://github.com/pythongosssss/ComfyUI-WD14-Tagger.git
 $gcs https://github.com/SLAPaper/ComfyUI-Image-Selector.git
 $gcs https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git
 $gcs https://github.com/nunchaku-tech/ComfyUI-nunchaku.git
-$gcs https://github.com/balazik/ComfyUI-PuLID-Flux.git        # PulidFlux suite (ModelLoader, EvaClip, InsightFace, ApplyPulidFlux)
-$gcs https://github.com/jamesWalker55/comfyui-various.git      # JW nodes (ex: JWImageResizeByLongerSide)
-$gcs https://github.com/evanspearman/ComfyMath                  # CM_ math and logic nodes (IntToFloat, BoolOps, etc.)
 
-# Legacy (dépréciés)
+# To be removed in future
 $gcs https://github.com/cubiq/ComfyUI_essentials.git
 $gcs https://github.com/cubiq/ComfyUI_InstantID.git
 $gcs https://github.com/cubiq/ComfyUI_IPAdapter_plus.git
@@ -132,141 +103,67 @@ $gcs https://github.com/CY-CHENYUE/ComfyUI-Janus-Pro.git
 $gcs https://github.com/FizzleDorf/ComfyUI_FizzNodes.git
 $gcs https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes.git
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 8️⃣ Restaure dans le dossier principal
-# ──────────────────────────────────────────────────────────────────────────────
-rm -rf "$workdir/ComfyUI_Windows_portable"
-cp -r "$port_root" "$workdir/"
-rm -rf "$(dirname "$port_root")"
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 9️⃣ Copie des fichiers de démarrage / scripts
-# ──────────────────────────────────────────────────────────────────────────────
-cp -rf "$workdir/attachments/." "$workdir/ComfyUI_Windows_portable/"
-du -hd2 "$workdir/ComfyUI_Windows_portable"
+################################################################################
+# Copy attachments files (incl. start scripts)
+cp -rf "$workdir"/attachments/. \
+    "$workdir"/ComfyUI_Windows_portable/
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 🔟 Téléchargements de modèles
-# ──────────────────────────────────────────────────────────────────────────────
+du -hd2 "$workdir"/ComfyUI_Windows_portable
+
+################################################################################
+# TAESD model for image on-the-fly preview
 cd "$workdir"
 $gcs https://github.com/madebyollin/taesd.git
-mkdir -p "$workdir/ComfyUI_Windows_portable/ComfyUI/models/vae_approx"
-cp taesd/*_decoder.pth "$workdir/ComfyUI_Windows_portable/ComfyUI/models/vae_approx/"
+mkdir -p "$workdir"/ComfyUI_Windows_portable/ComfyUI/models/vae_approx
+cp taesd/*_decoder.pth \
+    "$workdir"/ComfyUI_Windows_portable/ComfyUI/models/vae_approx/
 rm -rf taesd
 
-# AnimateDiff-Evolved : motion model par défaut
-ad_file="mm_sd_v14.ckpt"
-ad_url="https://huggingface.co/guoyww/animatediff/resolve/main/models/motion_module/mm_sd_v14.ckpt"
-ad_dir_node="$workdir/ComfyUI_Windows_portable/ComfyUI/custom_nodes/ComfyUI-AnimateDiff-Evolved/models"
-ad_dir_global="$workdir/ComfyUI_Windows_portable/ComfyUI/models/animatediff_models"
-mkdir -p "$ad_dir_node" "$ad_dir_global"
+# Download models for ReActor
+cd "$workdir"/ComfyUI_Windows_portable/ComfyUI/models
+curl -sSL https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth \
+    --create-dirs -o facerestore_models/codeformer-v0.1.0.pth
+curl -sSL https://github.com/TencentARC/GFPGAN/releases/download/v1.3.4/GFPGANv1.4.pth \
+    --create-dirs -o facerestore_models/GFPGANv1.4.pth
+curl -sSL https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/inswapper_128_fp16.onnx \
+    --create-dirs -o insightface/inswapper_128_fp16.onnx
+curl -sSL https://huggingface.co/AdamCodd/vit-base-nsfw-detector/resolve/main/config.json \
+    --create-dirs -o nsfw_detector/vit-base-nsfw-detector/config.json
+curl -sSL https://huggingface.co/AdamCodd/vit-base-nsfw-detector/resolve/main/confusion_matrix.png \
+    --create-dirs -o nsfw_detector/vit-base-nsfw-detector/confusion_matrix.png
+curl -sSL https://huggingface.co/AdamCodd/vit-base-nsfw-detector/resolve/main/model.safetensors \
+    --create-dirs -o nsfw_detector/vit-base-nsfw-detector/model.safetensors
+curl -sSL https://huggingface.co/AdamCodd/vit-base-nsfw-detector/resolve/main/preprocessor_config.json \
+    --create-dirs -o nsfw_detector/vit-base-nsfw-detector/preprocessor_config.json
 
-echo "[AnimateDiff] Téléchargement du motion model: $ad_file"
-curl -L --fail --retry 3 --retry-all-errors --connect-timeout 20 -o "$ad_dir_node/$ad_file" "$ad_url" || true
-if [ -f "$ad_dir_node/$ad_file" ]; then
-  cp -f "$ad_dir_node/$ad_file" "$ad_dir_global/$ad_file" || true
-else
-  echo "[AnimateDiff] ATTENTION: téléchargement du motion model non effectué (réseau ?)."
-fi
+# Download models for Impact-Pack & Impact-Subpack
+cd "$workdir"/ComfyUI_Windows_portable/ComfyUI/custom_nodes/ComfyUI-Impact-Pack
+"$workdir"/ComfyUI_Windows_portable/python_standalone/python.exe -s -B install.py
+cd "$workdir"/ComfyUI_Windows_portable/ComfyUI/custom_nodes/ComfyUI-Impact-Subpack
+"$workdir"/ComfyUI_Windows_portable/python_standalone/python.exe -s -B install.py
 
-# ReActor models
-cd "$workdir/ComfyUI_Windows_portable/ComfyUI/models"
-curl -sSL https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth --create-dirs -o facerestore_models/codeformer-v0.1.0.pth
-curl -sSL https://github.com/TencentARC/GFPGAN/releases/download/v1.3.4/GFPGANv1.4.pth   --create-dirs -o facerestore_models/GFPGANv1.4.pth
-curl -sSL https://huggingface.co/datasets/Gourieff/ReActor/resolve/main/models/inswapper_128_fp16.onnx --create-dirs -o insightface/inswapper_128_fp16.onnx
-
-# Impact-Pack / Subpack
-cd "$workdir/ComfyUI_Windows_portable/ComfyUI/custom_nodes/ComfyUI-Impact-Pack"
-"$workdir/ComfyUI_Windows_portable/python_standalone/python.exe" -s -B install.py
-cd "$workdir/ComfyUI_Windows_portable/ComfyUI/custom_nodes/ComfyUI-Impact-Subpack"
-"$workdir/ComfyUI_Windows_portable/python_standalone/python.exe" -s -B install.py
-
-"$workdir/ComfyUI_Windows_portable/python_standalone/python.exe" -m pip install -q hf_xet
-
-# ──────────────────────────────────────────────────────────────────────────────
-# EVA CLIP family models (EVA1 + EVA02 variants)
-# ──────────────────────────────────────────────────────────────────────────────
-eva_dir="$workdir/ComfyUI_Windows_portable/ComfyUI/models/clip"
-mkdir -p "$eva_dir"
-
-declare -A eva_models=(
-  # EVA1 (legacy for PuLID / ReActor)
-  ["eva_clip_vit_l.pth"]="https://huggingface.co/black-forest-labs/eva_clip/resolve/main/eva_clip_vit_l.pth"
-
-  # EVA02 series (used by PuLID-Flux, Florence2, and derivatives)
-  ["EVA02_CLIP_L_336_psz14_s6B.pt"]="https://huggingface.co/kijai/ComfyUI-Florence2/resolve/main/models/EVA02_CLIP_L_336_psz14_s6B.pt"
-  ["EVA02_CLIP_B_336_psz14_s4B.pt"]="https://huggingface.co/kijai/ComfyUI-Florence2/resolve/main/models/EVA02_CLIP_B_336_psz14_s4B.pt"
-  ["EVA02_CLIP_L_14_s6B.pt"]="https://huggingface.co/kijai/ComfyUI-Florence2/resolve/main/models/EVA02_CLIP_L_14_s6B.pt"
-)
-
-for file in "${!eva_models[@]}"; do
-  dest="$eva_dir/$file"
-  url="${eva_models[$file]}"
-  if [ ! -f "$dest" ]; then
-    echo "[EVA CLIP] Téléchargement de $file ..."
-    curl -L --fail --retry 3 --retry-all-errors --connect-timeout 25 -o "$dest" "$url" \
-      && echo "[OK] $file téléchargé." \
-      || echo "[WARN] Échec du téléchargement de $file."
-  else
-    echo "[EVA CLIP] $file déjà présent, skip."
-  fi
-done
-
-# ──────────────────────────────────────────────────────────────────────────────
-# AnimateDiff-Evolved: add default motion model (avoid "No motion models found")
-# ──────────────────────────────────────────────────────────────────────────────
-ad_model="mm_sd_v15_v2.ckpt"
-ad_url="https://huggingface.co/guoyww/animatediff/resolve/main/models/motion_module/mm_sd_v15_v2.ckpt"
-
-ad_node_dir="$workdir/ComfyUI_Windows_portable/ComfyUI/custom_nodes/ComfyUI-AnimateDiff-Evolved/models"
-ad_global_dir="$workdir/ComfyUI_Windows_portable/ComfyUI/models/animatediff_models"
-mkdir -p "$ad_node_dir" "$ad_global_dir"
-
-if [ ! -f "$ad_global_dir/$ad_model" ]; then
-  echo "[AnimateDiffEvo] Téléchargement du modèle de motion: $ad_model ..."
-  curl -L --fail --retry 3 --retry-all-errors --connect-timeout 25 \
-       -o "$ad_global_dir/$ad_model" "$ad_url" \
-       && echo "[OK] Motion model $ad_model téléchargé." \
-       || echo "[WARN] Échec du téléchargement du motion model."
-else
-  echo "[AnimateDiffEvo] $ad_model déjà présent, skip."
-fi
-
-# Copie aussi dans le dossier du node pour compatibilité
-cp -f "$ad_global_dir/$ad_model" "$ad_node_dir/" 2>/dev/null || true
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Ensure EVA CLIP models available for PuLID-Flux node (offline compatibility)
-# ──────────────────────────────────────────────────────────────────────────────
-eva_flux_dir="$workdir/ComfyUI_Windows_portable/ComfyUI/custom_nodes/ComfyUI-PuLID-Flux/eva_clip/checkpoints"
-mkdir -p "$eva_flux_dir"
-
-for f in "$eva_dir"/*.pt; do
-  cp -f "$f" "$eva_flux_dir/" 2>/dev/null || true
-done
-echo "[EVA CLIP] Copie des modèles vers PuLID-Flux terminée."
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 11️⃣ Test CPU
-# ──────────────────────────────────────────────────────────────────────────────
-cd "$workdir/ComfyUI_Windows_portable"
+################################################################################
+# Run the test (CPU only), also let custom nodes download some models
+cd "$workdir"/ComfyUI_Windows_portable
 ./python_standalone/python.exe -s -B ComfyUI/main.py --quick-test-for-ci --cpu
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 12️⃣ Nettoyage final
-# ──────────────────────────────────────────────────────────────────────────────
-rm -vf "$workdir/ComfyUI_Windows_portable/"*.log
-rm -vf "$workdir/ComfyUI_Windows_portable/ComfyUI/user/"*.log
-rm -vrf "$workdir/ComfyUI_Windows_portable/ComfyUI/user/default/ComfyUI-Manager"
+################################################################################
+# Clean up
+# DO NOT clean pymatting cache, they are nbi/nbc files for Numba, and won't be regenerated.
+#rm -rf "$workdir"/ComfyUI_Windows_portable/python_standalone/Lib/site-packages/pymatting
+rm -vf "$workdir"/ComfyUI_Windows_portable/*.log
+rm -vf "$workdir"/ComfyUI_Windows_portable/ComfyUI/user/*.log
+rm -vrf "$workdir"/ComfyUI_Windows_portable/ComfyUI/user/default/ComfyUI-Manager
 
-cd "$workdir/ComfyUI_Windows_portable/ComfyUI/custom_nodes"
+cd "$workdir"/ComfyUI_Windows_portable/ComfyUI/custom_nodes
 rm -vf ./ComfyUI-Custom-Scripts/pysssss.json
 rm -vf ./ComfyUI-Easy-Use/config.yaml
 rm -vf ./ComfyUI-Impact-Pack/impact-pack.ini
 rm -vf ./Jovimetrix/web/config.json
 rm -vf ./was-node-suite-comfyui/was_suite_config.json
 
-cd "$workdir/ComfyUI_Windows_portable/ComfyUI/custom_nodes/ComfyUI-Manager"
+cd "$workdir"/ComfyUI_Windows_portable/ComfyUI/custom_nodes/ComfyUI-Manager
 git reset --hard
 git clean -fxd
 
