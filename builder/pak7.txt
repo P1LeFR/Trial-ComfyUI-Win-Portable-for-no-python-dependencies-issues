@@ -14,5 +14,5 @@ peft
 protobuf
 pydub
 pymatting
-Requests
+requests
 tomli
