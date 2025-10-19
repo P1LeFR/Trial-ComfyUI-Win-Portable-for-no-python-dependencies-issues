@@ -3,6 +3,7 @@ set -eux
 
 # Chores
 git config --global core.autocrlf true
+git config --global core.longpaths true   # éviter les erreurs de chemins trop longs sous Windows
 workdir=$(pwd)
 gcs='git clone --depth=1 --no-tags --recurse-submodules --shallow-submodules'
 export PYTHONPYCACHEPREFIX="$workdir/pycache2"
@@ -18,7 +19,6 @@ export TORCH_HOME="$workdir/ComfyUI_Windows_portable/TorchHome"
 mkdir -p "${TORCH_HOME}"
 
 # Relocate python_standalone
-# This move is intentional. It will fast-fail if this breaks anything.
 mv  "$workdir"/python_standalone  "$workdir"/ComfyUI_Windows_portable/python_standalone
 
 # Add MinGit (Portable Git)
@@ -60,11 +60,17 @@ $gcs https://github.com/shiimizu/ComfyUI_smZNodes.git
 $gcs https://github.com/ltdrdata/was-node-suite-comfyui.git
 $gcs https://github.com/yolain/ComfyUI-Easy-Use.git
 
+# >>> Ajouts manquants - General / Utilitaires
+$gcs https://github.com/evanspearman/ComfyMath.git                     # ComfyMath
+$gcs https://github.com/sipherxyz/comfyui-art-venture.git              # comfyui-art-venture
+$gcs https://github.com/jamesWalker55/comfyui-various.git              # comfyui-various
+$gcs https://github.com/Derfuu/Derfuu_ComfyUI_ModdedNodes.git          # Derfuu_ComfyUI_ModdedNodes
+
 # Control
 $gcs https://github.com/chflame163/ComfyUI_LayerStyle.git
 $gcs https://github.com/Fannovel16/comfyui_controlnet_aux.git
+$gcs https://codeberg.org/Gourieff/comfyui-reactor-node.git ComfyUI-ReActor      # <-- ReActor (nouveau dépôt)
 $gcs https://github.com/florestefano1975/comfyui-portrait-master.git
-$gcs https://github.com/Gourieff/ComfyUI-ReActor.git
 $gcs https://github.com/huchenlei/ComfyUI-IC-Light-Native.git
 $gcs https://github.com/huchenlei/ComfyUI-layerdiffuse.git
 $gcs https://github.com/Jonseed/ComfyUI-Detail-Daemon.git
@@ -73,7 +79,12 @@ $gcs https://github.com/ltdrdata/ComfyUI-Impact-Pack.git
 $gcs https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git
 $gcs https://github.com/ltdrdata/ComfyUI-Inspire-Pack.git
 $gcs https://github.com/mcmonkeyprojects/sd-dynamic-thresholding.git
-$gcs https://github.com/twri/sdxl_prompt_styler.git
+$gcs https://github.com/twri/sdxl_prompt_styler.gitnon
+
+# >>> Ajouts manquants - Control
+$gcs https://github.com/chflame163/ComfyUI_LayerStyle_Advance.git      # ComfyUI_LayerStyle_Advance
+$gcs https://github.com/storyicon/comfyui_segment_anything.git         # comfyui_segment_anything
+$gcs https://github.com/lquesada/ComfyUI-Inpaint-CropAndStitch.git     # comfyui-inpaint-cropandstitch
 
 # Video
 $gcs https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git
@@ -93,6 +104,10 @@ $gcs https://github.com/SLAPaper/ComfyUI-Image-Selector.git
 $gcs https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git
 $gcs https://github.com/nunchaku-tech/ComfyUI-nunchaku.git
 
+# >>> Ajouts manquants - PuLID / Flux
+$gcs https://github.com/balazik/ComfyUI-PuLID-Flux.git                 # ComfyUI-PuLID-Flux
+$gcs https://github.com/lldacing/ComfyUI_PuLID_Flux_ll.git             # ComfyUI_PuLID_Flux_ll
+
 # To be removed in future
 $gcs https://github.com/cubiq/ComfyUI_essentials.git
 $gcs https://github.com/cubiq/ComfyUI_InstantID.git
@@ -102,7 +117,6 @@ $gcs https://github.com/cubiq/ComfyUI_FaceAnalysis.git
 $gcs https://github.com/CY-CHENYUE/ComfyUI-Janus-Pro.git
 $gcs https://github.com/FizzleDorf/ComfyUI_FizzNodes.git
 $gcs https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes.git
-
 
 ################################################################################
 # Copy attachments files (incl. start scripts)
@@ -150,8 +164,6 @@ cd "$workdir"/ComfyUI_Windows_portable
 
 ################################################################################
 # Clean up
-# DO NOT clean pymatting cache, they are nbi/nbc files for Numba, and won't be regenerated.
-#rm -rf "$workdir"/ComfyUI_Windows_portable/python_standalone/Lib/site-packages/pymatting
 rm -vf "$workdir"/ComfyUI_Windows_portable/*.log
 rm -vf "$workdir"/ComfyUI_Windows_portable/ComfyUI/user/*.log
 rm -vrf "$workdir"/ComfyUI_Windows_portable/ComfyUI/user/default/ComfyUI-Manager
