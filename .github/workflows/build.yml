@@ -6,48 +6,36 @@ on:
 jobs:
   build_upload:
     permissions:
-      contents: "write"
-      packages: "write"
-      pull-requests: "read"
+        contents: "write"
+        packages: "write"
+        pull-requests: "read"
     runs-on: windows-latest
-
-    # 👇 Bloc d'environnement ajouté ici
-    env:
-      # Forcer le canal CUDA pour Torch/xFormers
-      PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cu128
-
-      # xFormers compatible Torch 2.7.x + cu128 + Python 3.12
-      XFORMERS_SPEC: 0.0.32.post2
-      XFORMERS_NO_DEPS: "1"
-      XFORMERS_ONLY_BINARY: "1"
-
-      # Autorisation GitHub API (pour récupérer le dernier tag ComfyUI sans 403)
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
     steps:
-      - uses: actions/checkout@v5
+        - uses: actions/checkout@v5
 
-      - name: Stage 1 Gathering Dependencies
-        shell: bash
-        working-directory: builder
-        run: bash stage1.sh
+        - name: Stage 1 Gathering Dependencies
+          shell: bash
+          working-directory: builder
+          run: bash stage1.sh
 
-      - name: Stage 2 Assembling Repositories
-        shell: bash
-        working-directory: builder
-        run: bash stage2.sh
+        - name: Stage 2 Assembling Repositories
+          shell: bash
+          working-directory: builder
+          run: bash stage2.sh
 
-      - name: Stage 3 Compressing Package
-        shell: bash
-        working-directory: builder
-        run: bash stage3.sh
+        - name: Stage 3 Compressing Package
+          shell: bash
+          working-directory: builder
+          run: bash stage3.sh
 
-      - name: Upload archive to release
-        uses: xresloader/upload-to-github-release@v1
-        env:
-          # Ce token GitHub est déjà injecté par GitHub Actions
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          file: "builder/*.7z*;builder/*.zip*"
-          draft: true
-          overwrite: true
+        - name: Upload archive to release
+          uses: xresloader/upload-to-github-release@v1
+          env:
+            # This is an always-on token in GitHub CI environment
+            # You don't need to configure it
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          with:
+            file: "builder/*.7z*;builder/*.zip*"
+            # Always draft before release
+            draft: true
+            overwrite: true
