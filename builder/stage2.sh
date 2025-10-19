@@ -2,23 +2,46 @@
 set -eux
 
 # ---------------------------------------------------------------------------
-# Raccourcir le chemin pour éviter "Filename too long" lors des git clone
-# (fonctionne sur GitHub Actions Windows avec bash/git-bash)
+# Chemins longs : stratégie robuste
+# 1) Tentative SUBST (W:) + chemin MSYS (/w)
+# 2) Fallback copie vers un répertoire très court ($RUNNER_TEMP/cwp_phys)
+#    puis recopie en fin d'étape
 # ---------------------------------------------------------------------------
 git config --global core.autocrlf true
 git config --global core.longpaths true
 
 workdir="$(pwd)"
-# Chemin Windows (D:\a\...) depuis git-bash
-workdir_win="$(pwd -W)"
-# Monte un lecteur court W: vers le workspace courant
-cmd.exe /C subst W: "$workdir_win"
-short_root="W:/"
+workdir_win="$(pwd -W 2>/dev/null || echo "")"
 
-# Utiliser W:\... comme racine pour toutes les opérations suivantes
+use_subst=0
+short_root=""
+
+# Tentative 1: SUBST vers W:
+if [ -n "$workdir_win" ]; then
+  cmd.exe /C subst W: "$workdir_win" || true
+  # Sous Git-Bash/MSYS, W: est visible en /w
+  if [ -d /w ]; then
+    short_root="/w"
+    use_subst=1
+  fi
+fi
+
+# Fallback: copie vers un chemin court physique
+if [ "$use_subst" -eq 0 ]; then
+  run_tmp="${RUNNER_TEMP:-/d/a}"
+  short_root="$run_tmp/cwp_phys"
+  rm -rf "$short_root" || true
+  mkdir -p "$short_root"
+  # Copie l’intégralité du workspace actuel vers le chemin court
+  cp -r "$workdir/." "$short_root/"
+fi
+
+# Tous les chemins suivants se basent sur $short_root (soit /w, soit $RUNNER_TEMP/cwp_phys)
 cd "$short_root"
 
-gcs='git clone --depth=1 --no-tags --recurse-submodules --shallow-submodules'
+# Renforce git pour les chemins longs à chaque clone
+gcs='git -c core.longpaths=true clone --depth=1 --no-tags --recurse-submodules --shallow-submodules'
+
 export PYTHONPYCACHEPREFIX="$short_root/pycache2"
 export PATH="$PATH:$short_root/ComfyUI_Windows_portable/python_standalone/Scripts"
 
@@ -42,10 +65,11 @@ rm MinGit.zip
 
 ################################################################################
 # ComfyUI main app
-git clone https://github.com/comfyanonymous/ComfyUI.git \
+git -c core.longpaths=true clone https://github.com/comfyanonymous/ComfyUI.git \
     "$short_root/ComfyUI_Windows_portable/ComfyUI"
 # Use latest stable version (has a release tag)
 cd "$short_root/ComfyUI_Windows_portable/ComfyUI"
+git fetch --tags --force
 git reset --hard "$(git tag | grep -e '^v' | sort -V | tail -1)"
 # Clear models folder (will restore in the next stage)
 rm -vrf models
@@ -193,9 +217,14 @@ git reset --hard
 git clean -fxd
 
 # ---------------------------------------------------------------------------
-# Démonte le lecteur virtuel W:
+# Fin : si SUBST utilisé, démonte. Sinon, recopie depuis le chemin court.
 # ---------------------------------------------------------------------------
-cmd.exe /C subst W: /D
-
-# Revenir au répertoire d’origine (par sûreté)
-cd "$workdir"
+if [ "$use_subst" -eq 1 ]; then
+  cmd.exe /C subst W: /D || true
+  cd "$workdir"
+else
+  # Copie de retour (chemin court -> workspace)
+  cp -rf "$short_root/ComfyUI_Windows_portable" "$workdir/"
+  cd "$workdir"
+  rm -rf "$short_root" || true
+fi
