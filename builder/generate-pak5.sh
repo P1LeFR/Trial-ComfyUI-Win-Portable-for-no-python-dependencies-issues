@@ -69,7 +69,7 @@ https://github.com/Derfuu/Derfuu_ComfyUI_ModdedNodes/raw/refs/heads/main/require
 )
 
 for line in "${array[@]}"; do
-    curl -w "\n" -sSL "${line}" >> pak5.txt
+    curl -fsSL "${line}" >> pak5.txt || true
 done
 
 sed -i '/^#/d' pak5.txt
