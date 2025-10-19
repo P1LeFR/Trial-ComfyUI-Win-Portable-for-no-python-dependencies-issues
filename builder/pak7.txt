@@ -16,3 +16,4 @@ pydub
 pymatting
 requests
 tomli
+opencv-contrib-python
