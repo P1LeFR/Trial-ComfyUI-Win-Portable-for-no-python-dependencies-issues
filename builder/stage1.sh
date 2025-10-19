@@ -41,7 +41,7 @@ $pip_exe install -r "$workdir"/pakZ.txt
 
 $pip_exe list
 
-# # --- Forcer les versions compatibles RTX série 50 (Torch 2.7.0 + CUDA 12.8) ---
+# # --- Forcer les versions compatibles RTX série 50 (Torch 2.7.0 + CUDA 12.9) ---
 # constraint_args="--constraint <(cat <<'EOF'
 # torch==2.7.0+cu129
 # torchvision==0.22.0+cu129
