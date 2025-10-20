@@ -15,12 +15,12 @@ du -h ComfyUI_Windows_portable/ComfyUI/models
 ################################################################################
 
 # # Séparation des modèles pour un empaquetage plus léger
-# mkdir -p m_folder/ComfyUI_Windows_portable/ComfyUI
-# mv "ComfyUI_Windows_portable/ComfyUI/models" \
-#    "m_folder/ComfyUI_Windows_portable/ComfyUI/models"
+mkdir -p m_folder/ComfyUI_Windows_portable/ComfyUI
+mv "ComfyUI_Windows_portable/ComfyUI/models" \
+   "m_folder/ComfyUI_Windows_portable/ComfyUI/models"
 
 # # Restaure le dossier models depuis Git (pour garder l’arborescence propre)
-# git -C "ComfyUI_Windows_portable/ComfyUI" checkout "models"
+git -C "ComfyUI_Windows_portable/ComfyUI" checkout "models"
 
 ################################################################################
 # Compression principale avec 7-Zip (LZMA2, volumes 2.14 Go)
@@ -36,10 +36,10 @@ du -h ComfyUI_Windows_portable/ComfyUI/models
 # 🔒 Compression séparée du dossier models (désactivée pour build plus rapide)
 ################################################################################
 
-# cd m_folder
-# "C:\Program Files\7-Zip\7z.exe" a -tzip -v2140000000b models.zip ComfyUI_Windows_portable
-# mv ./*.zip* ../
-# cd ..
+cd m_folder
+"C:\Program Files\7-Zip\7z.exe" a -tzip -v2140000000b models.zip ComfyUI_Windows_portable
+mv ./*.zip* ../
+cd ..
 
 ################################################################################
 # Vérification des fichiers générés
