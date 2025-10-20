@@ -8,7 +8,8 @@ kornia
 matplotlib
 omegaconf
 onnx
-onnxruntime-gpu
+# onnxruntime-gpu
+onnxruntime-gpu==1.22.0
 opencv-contrib-python-headless
 pandas
 pilgram
